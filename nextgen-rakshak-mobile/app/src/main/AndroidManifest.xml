@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
 
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Buzz the volunteer on a candidate match; they are watching the crowd, not the screen. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 

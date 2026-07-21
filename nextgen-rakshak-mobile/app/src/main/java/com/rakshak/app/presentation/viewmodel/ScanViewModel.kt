@@ -13,8 +13,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** A match awaiting the volunteer's visual confirmation. */
-data class PendingMatch(val alert: Alert, val confidence: Float)
+/**
+ * A match awaiting the volunteer's visual confirmation. [faceCrop] is the face as
+ * captured live, shown beside the parent-submitted photo so the volunteer judges
+ * the two images themselves rather than trusting the score.
+ */
+data class PendingMatch(
+    val alert: Alert,
+    val confidence: Float,
+    val faceCrop: Bitmap,
+)
 
 /**
  * Drives the scan loop: each camera frame is matched against active alerts. A
@@ -50,7 +58,7 @@ class ScanViewModel(
             try {
                 val hit = matcher.match(frame, activeAlerts).firstOrNull() ?: return@launch
                 val alert = activeAlerts.firstOrNull { it.id == hit.alertId } ?: return@launch
-                _pending.value = PendingMatch(alert, hit.confidence)
+                _pending.value = PendingMatch(alert, hit.confidence, hit.faceCrop)
             } finally {
                 busy = false
             }

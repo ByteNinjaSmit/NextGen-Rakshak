@@ -40,7 +40,14 @@ class FaceMatcher(
                         bestAlert = alert
                     }
                 }
-                bestAlert?.let { FaceMatch(it.id, bestScore, face.boundingBox) }
+                bestAlert?.let {
+                    FaceMatch(
+                        alertId = it.id,
+                        confidence = bestScore,
+                        boundingBox = face.boundingBox,
+                        faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
+                    )
+                }
             }
         }
 }

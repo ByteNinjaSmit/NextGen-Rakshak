@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, GeoPoint, Timestamp } from "firebase-admin/firestore";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { getStorage } from "firebase-admin/storage";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2/options";
@@ -62,8 +63,66 @@ export const onAlertCreated = onDocumentCreated("alerts/{alertId}", async (event
 });
 
 /**
- * Scheduled cleanup: mark active alerts older than the TTL as resolved and drop
- * their embeddings (privacy). Runs every 30 minutes.
+ * Derive the Cloud Storage object path from a Firebase download URL.
+ * URLs look like `https://.../o/alert_images%2F123_a.jpg?alt=media&token=...`,
+ * so the path is the URL-decoded segment between `/o/` and the query string.
+ */
+function storagePathFromUrl(imageUrl: string): string | null {
+  const match = /\/o\/([^?]+)/.exec(imageUrl);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
+ * Purge the biometric material for a resolved alert: clear the embedding and
+ * delete the child's photo from Cloud Storage. This is what makes the
+ * "data is ephemeral and auto-expires" guarantee real rather than a policy
+ * statement — the photo does not outlive the case.
+ */
+async function purgeAlertData(
+  ref: FirebaseFirestore.DocumentReference,
+  data: FirebaseFirestore.DocumentData,
+  alertId: string,
+): Promise<void> {
+  const imageUrl: string | undefined = data.imageUrl;
+  if (imageUrl) {
+    const path = storagePathFromUrl(imageUrl);
+    if (path) {
+      try {
+        await getStorage().bucket().file(path).delete({ ignoreNotFound: true });
+        logger.info("Alert photo deleted", { alertId, path });
+      } catch (err) {
+        logger.error("Photo deletion failed", { alertId, path, err: String(err) });
+      }
+    } else {
+      logger.warn("Could not parse storage path from imageUrl", { alertId });
+    }
+  }
+
+  const updates: Record<string, unknown> = {};
+  if (Array.isArray(data.embedding) && data.embedding.length > 0) updates.embedding = [];
+  if (imageUrl) updates.imageUrl = "";
+  if (Object.keys(updates).length > 0) await ref.update(updates);
+}
+
+/**
+ * When an alert is marked resolved (by an officer or by the expiry sweep),
+ * purge its embedding and photo. Firing on the status transition keeps a single
+ * cleanup path for both routes, and the guard stops the function's own write
+ * from re-triggering it.
+ */
+export const onAlertResolved = onDocumentUpdated("alerts/{alertId}", async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after) return;
+  if (before.status !== "active" || after.status !== "resolved") return;
+
+  await purgeAlertData(event.data!.after.ref, after, event.params.alertId);
+});
+
+/**
+ * Scheduled cleanup: mark active alerts older than the TTL as resolved.
+ * The resulting status transition triggers [onAlertResolved], which deletes the
+ * embedding and the photo. Runs every 30 minutes.
  */
 export const expireAlerts = onSchedule("every 30 minutes", async () => {
   const db = getFirestore();
@@ -78,7 +137,7 @@ export const expireAlerts = onSchedule("every 30 minutes", async () => {
   if (stale.empty) return;
 
   const batch = db.batch();
-  stale.forEach((doc) => batch.update(doc.ref, { status: "resolved", embedding: [] }));
+  stale.forEach((doc) => batch.update(doc.ref, { status: "resolved" }));
   await batch.commit();
   logger.info("Expired alerts", { count: stale.size });
 });

@@ -2,6 +2,7 @@ package com.rakshak.app.presentation.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,17 +11,21 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rakshak.app.data.model.Alert
 import com.rakshak.app.presentation.viewmodel.HomeViewModel
+import com.rakshak.app.utils.ElapsedTime
+import kotlinx.coroutines.delay
 
 /** Lists active alerts and lets the volunteer start crowd scanning. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,9 +57,23 @@ fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit) {
 
 @Composable
 private fun AlertRow(alert: Alert) {
+    // Re-computed every 30 s so the golden-hour clock stays honest without a refresh.
+    val elapsed by produceState(ElapsedTime.since(alert.timestamp), alert.timestamp) {
+        while (true) {
+            value = ElapsedTime.since(alert.timestamp)
+            delay(30_000)
+        }
+    }
+
     Card {
         Column(Modifier.padding(12.dp)) {
-            Text(alert.childName, fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(alert.childName, fontWeight = FontWeight.Bold)
+                Text(elapsed, style = MaterialTheme.typography.labelMedium)
+            }
             Text("${alert.age} yrs · ${alert.gender}")
             Text(alert.clothingDesc)
         }

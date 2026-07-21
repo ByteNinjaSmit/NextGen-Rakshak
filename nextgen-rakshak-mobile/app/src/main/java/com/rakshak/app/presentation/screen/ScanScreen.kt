@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -66,6 +67,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val context = LocalContext.current
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val reported by viewModel.reported.collectAsStateWithLifecycle()
+    val scanningFor by viewModel.scanningFor.collectAsStateWithLifecycle()
 
     LaunchedEffect(reported) {
         if (reported) onReported()
@@ -112,6 +114,23 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 previewView
             },
         )
+
+        // Tell the volunteer who they are looking for, over the live preview.
+        if (scanningFor.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            ) {
+                Text(
+                    text = "Scanning for ${scanningFor.joinToString(", ")}…",
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
 
         val match = pending
         if (match != null) {

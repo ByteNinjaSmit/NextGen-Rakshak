@@ -44,9 +44,16 @@ class ScanViewModel(
     private val _reported = MutableStateFlow(false)
     val reported: StateFlow<Boolean> = _reported.asStateFlow()
 
+    /** Names of the children currently being scanned for, shown as a camera overlay. */
+    private val _scanningFor = MutableStateFlow<List<String>>(emptyList())
+    val scanningFor: StateFlow<List<String>> = _scanningFor.asStateFlow()
+
     init {
         viewModelScope.launch {
-            repository.observeActiveAlerts().collect { activeAlerts = it }
+            repository.observeActiveAlerts().collect { alerts ->
+                activeAlerts = alerts
+                _scanningFor.value = alerts.map { it.childName }
+            }
         }
     }
 

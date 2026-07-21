@@ -8,6 +8,16 @@ object Constants {
     const val EMBEDDING_SIZE = 128
     const val SIMILARITY_THRESHOLD = 0.75f
 
+    /**
+     * Head-pose limits for discarding non-frontal faces before embedding.
+     * MobileFaceNet expects roughly frontal input, so a profile view yields an
+     * embedding that matches nothing useful. Yaw (left/right turn) is the
+     * dominant signal; roll (head tilt) is tolerated more generously because
+     * the crop stays recognisable.
+     */
+    const val MAX_FACE_YAW_DEGREES = 30f
+    const val MAX_FACE_ROLL_DEGREES = 40f
+
     // Firestore
     const val COLLECTION_ALERTS = "alerts"
     const val COLLECTION_MATCHES = "matches"

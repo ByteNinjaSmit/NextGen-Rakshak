@@ -23,7 +23,15 @@ class MlKitFaceDetector : FaceDetector {
             val image = InputImage.fromBitmap(frame, 0)
             detector.process(image)
                 .addOnSuccessListener { faces ->
-                    cont.resume(faces.map { DetectedFace(it.boundingBox, it.headEulerAngleZ) })
+                    cont.resume(
+                        faces.map {
+                            DetectedFace(
+                                boundingBox = it.boundingBox,
+                                headEulerAngleY = it.headEulerAngleY,
+                                headEulerAngleZ = it.headEulerAngleZ,
+                            )
+                        }
+                    )
                 }
                 .addOnFailureListener { cont.resumeWithException(it) }
         }

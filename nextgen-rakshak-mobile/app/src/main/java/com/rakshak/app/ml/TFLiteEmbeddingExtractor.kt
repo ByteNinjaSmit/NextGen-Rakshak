@@ -20,14 +20,20 @@ class TFLiteEmbeddingExtractor(context: Context) : EmbeddingExtractor {
             put(model)
             rewind()
         }
-        Interpreter(buffer)
+        // Multi-threaded inference to hold the <200 ms per-face budget on mid-range devices.
+        Interpreter(buffer, Interpreter.Options().setNumThreads(NUM_THREADS))
     }
 
-    override fun extract(face: Bitmap): FloatArray {
+    /**
+     * TFLite interpreters are not thread-safe, so serialise access. In practice the
+     * scan loop is single-flight, but a stray concurrent call would corrupt the
+     * interpreter's internal state rather than fail loudly.
+     */
+    override fun extract(face: Bitmap): FloatArray = synchronized(this) {
         val input = toNormalizedBuffer(face)
         val output = Array(1) { FloatArray(Constants.EMBEDDING_SIZE) }
         interpreter.run(input, output)
-        return output[0]
+        output[0]
     }
 
     /** Convert pixels to a [-1, 1] normalized RGB float buffer. */
@@ -45,5 +51,9 @@ class TFLiteEmbeddingExtractor(context: Context) : EmbeddingExtractor {
         }
         buffer.rewind()
         return buffer
+    }
+
+    private companion object {
+        const val NUM_THREADS = 4
     }
 }

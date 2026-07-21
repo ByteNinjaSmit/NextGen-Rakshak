@@ -18,6 +18,14 @@ object Constants {
     const val MAX_FACE_YAW_DEGREES = 30f
     const val MAX_FACE_ROLL_DEGREES = 40f
 
+    /**
+     * Padding added around the detected face box before cropping to the model
+     * input, as a fraction of the box's longest side. MUST match FACE_CROP_MARGIN
+     * in `functions/src/embedding.ts`, or server and device embeddings of the same
+     * child will be framed differently and the cosine score will fall.
+     */
+    const val FACE_CROP_MARGIN = 0.2f
+
     // Firestore
     const val COLLECTION_ALERTS = "alerts"
     const val COLLECTION_MATCHES = "matches"

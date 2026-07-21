@@ -8,15 +8,36 @@ import com.rakshak.app.utils.Constants
 /** Crops a detected face out of a frame and resizes it to the model input size. */
 object FacePreprocessor {
 
+    /**
+     * Crops the face to the model input.
+     *
+     * The crop is a **square centred on the detector box**, not the raw box. Two
+     * reasons, both of which affect whether a true match clears the 0.75 threshold:
+     *
+     * 1. Squashing a non-square box into a square 112x112 input distorts the face
+     *    by a factor that depends on the box's aspect ratio.
+     * 2. The server computes the alert embedding with a different detector
+     *    (BlazeFace) whose boxes frame faces differently from ML Kit's. Deriving a
+     *    square from the box centre and size makes the two pipelines agree
+     *    geometrically instead of inheriting each detector's framing convention.
+     *
+     * Any change here must be mirrored in `functions/src/embedding.ts`.
+     */
     fun cropAndResize(frame: Bitmap, box: Rect): Bitmap {
-        // Clamp the bounding box to the frame bounds to avoid out-of-range crops.
-        val left = box.left.coerceIn(0, frame.width - 1)
-        val top = box.top.coerceIn(0, frame.height - 1)
-        val width = box.width().coerceAtMost(frame.width - left)
-        val height = box.height().coerceAtMost(frame.height - top)
-
-        val cropped = Bitmap.createBitmap(frame, left, top, width, height)
+        val square = squareAround(frame, box, Constants.FACE_CROP_MARGIN)
+        val cropped = Bitmap.createBitmap(frame, square.left, square.top, square.width(), square.height())
         return cropped.scale(Constants.FACE_INPUT_SIZE, Constants.FACE_INPUT_SIZE)
+    }
+
+    /** Largest in-bounds square centred on [box], padded by [margin] on each side. */
+    private fun squareAround(frame: Bitmap, box: Rect, margin: Float): Rect {
+        val side = (maxOf(box.width(), box.height()) * (1f + 2f * margin)).toInt()
+            .coerceAtMost(minOf(frame.width, frame.height))
+            .coerceAtLeast(1)
+
+        val left = (box.centerX() - side / 2).coerceIn(0, frame.width - side)
+        val top = (box.centerY() - side / 2).coerceIn(0, frame.height - side)
+        return Rect(left, top, left + side, top + side)
     }
 
     /**

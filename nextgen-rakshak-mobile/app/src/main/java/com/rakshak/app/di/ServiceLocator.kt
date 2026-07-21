@@ -75,10 +75,24 @@ object ServiceLocator {
     fun connectivity(context: Context): ConnectivityObserver =
         ConnectivityObserver(context.applicationContext)
 
+    @Volatile
+    private var extractorInstance: TFLiteEmbeddingExtractor? = null
+
+    /**
+     * Singleton embedding extractor. The TFLite interpreter holds native memory
+     * and is never closed, so building one per scan session would reload the
+     * model and leak the previous interpreter each time the screen is opened.
+     */
+    private fun embeddingExtractor(context: Context): TFLiteEmbeddingExtractor =
+        extractorInstance ?: synchronized(this) {
+            extractorInstance
+                ?: TFLiteEmbeddingExtractor(context.applicationContext).also { extractorInstance = it }
+        }
+
     fun faceMatcher(context: Context): FaceMatcher =
         FaceMatcher(
             detector = MlKitFaceDetector(),
-            extractor = TFLiteEmbeddingExtractor(context.applicationContext),
+            extractor = embeddingExtractor(context),
             comparator = CosineEmbeddingComparator(),
         )
 

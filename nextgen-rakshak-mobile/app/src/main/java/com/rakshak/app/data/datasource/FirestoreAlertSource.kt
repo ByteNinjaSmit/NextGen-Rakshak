@@ -34,7 +34,9 @@ class FirestoreAlertSource(
                             ?.toFloatArray() ?: FloatArray(0),
                         lastSeen = doc.getString("lastSeen").orEmpty(),
                         status = doc.getString("status") ?: "active",
-                        timestamp = doc.getTimestamp("timestamp")?.seconds ?: 0L,
+                        // Milliseconds, not seconds: Alert.timestamp is compared against
+                        // System.currentTimeMillis() for expiry and elapsed-time display.
+                        timestamp = doc.getTimestamp("timestamp")?.toDate()?.time ?: 0L,
                     )
                 }
                 trySend(alerts)

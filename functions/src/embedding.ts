@@ -5,6 +5,8 @@ import * as blazeface from "@tensorflow-models/blazeface";
 // Must match the Android pipeline (FacePreprocessor + TFLiteEmbeddingExtractor)
 // so server-computed alert embeddings are comparable to on-device scan embeddings.
 const INPUT_SIZE = 112;
+/** Must equal Constants.FACE_CROP_MARGIN in the Android app. */
+const FACE_CROP_MARGIN = 0.2;
 const MODEL_URL = `file://${path.join(__dirname, "..", "model", "model.json")}`;
 
 let embedder: tf.GraphModel | null = null;
@@ -36,30 +38,48 @@ export async function computeEmbedding(imageBuffer: Buffer): Promise<number[]> {
   return embedding;
 }
 
-/** Return a tensor cropped to the largest detected face, or a clone if none. */
+/**
+ * Return a tensor cropped to the largest detected face, or a clone if none.
+ *
+ * The crop is a **square centred on the detected box**, padded by
+ * FACE_CROP_MARGIN — deliberately the same geometry as the Android
+ * FacePreprocessor. The device detects faces with ML Kit and this function uses
+ * BlazeFace; their raw boxes frame a face differently, so cropping each
+ * detector's box directly would hand the same model two differently-framed
+ * images of the same child and depress the cosine score. Deriving a square from
+ * the box centre and size removes both that framing difference and the aspect
+ * distortion of squashing a non-square box into a square input.
+ *
+ * Any change here must be mirrored in Android's `FacePreprocessor`.
+ */
 async function cropLargestFace(image: tf.Tensor3D): Promise<tf.Tensor3D> {
   const [height, width] = image.shape;
   const faces = await detector!.estimateFaces(image, false);
   if (faces.length === 0) return image.clone();
 
-  let best: { top: number; left: number; h: number; w: number } | null = null;
+  let best: { cx: number; cy: number; size: number } | null = null;
   let bestArea = 0;
   for (const f of faces) {
     const [x1, y1] = f.topLeft as [number, number];
     const [x2, y2] = f.bottomRight as [number, number];
-    const area = (x2 - x1) * (y2 - y1);
+    const w = x2 - x1;
+    const h = y2 - y1;
+    const area = w * h;
     if (area > bestArea) {
       bestArea = area;
-      best = { top: y1, left: x1, h: y2 - y1, w: x2 - x1 };
+      best = { cx: x1 + w / 2, cy: y1 + h / 2, size: Math.max(w, h) };
     }
   }
   if (!best) return image.clone();
 
-  const top = clamp(Math.floor(best.top), 0, height - 1);
-  const left = clamp(Math.floor(best.left), 0, width - 1);
-  const h = clamp(Math.floor(best.h), 1, height - top);
-  const w = clamp(Math.floor(best.w), 1, width - left);
-  return image.slice([top, left, 0], [h, w, 3]);
+  const side = clamp(
+    Math.floor(best.size * (1 + 2 * FACE_CROP_MARGIN)),
+    1,
+    Math.min(height, width),
+  );
+  const left = clamp(Math.floor(best.cx - side / 2), 0, width - side);
+  const top = clamp(Math.floor(best.cy - side / 2), 0, height - side);
+  return image.slice([top, left, 0], [side, side, 3]);
 }
 
 function clamp(v: number, lo: number, hi: number): number {

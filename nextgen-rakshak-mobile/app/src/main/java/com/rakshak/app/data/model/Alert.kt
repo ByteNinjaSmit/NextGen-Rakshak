@@ -4,6 +4,9 @@ package com.rakshak.app.data.model
  * A missing-child alert. Mirrors the Firestore `alerts` document.
  *
  * @property embedding 128-d MobileFaceNet face embedding of the child's photo.
+ * @property timestamp When the alert was raised, in **epoch milliseconds** — it is
+ *   compared directly against `System.currentTimeMillis()` for mesh expiry and
+ *   for the elapsed-time display, so seconds here would break both.
  */
 data class Alert(
     val id: String = "",

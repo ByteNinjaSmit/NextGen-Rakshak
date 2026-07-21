@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// Rakshak Firestore rules.
+// Everyone touching data must be authenticated:
+//   - Police officers on the web kiosk sign in with Google.
+//   - Volunteer devices sign in anonymously.
+// Tighten later with a custom `police` claim to gate alert creation.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Missing-child alerts. Created by the kiosk, read by everyone signed in.
+    match /alerts/{alertId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
+    }
+
+    // Match sightings reported by volunteers.
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow create: if signedIn();
+      // Only status updates (e.g. -> dispatched) from the kiosk.
+      allow update: if signedIn();
+      allow delete: if false;
+    }
+
+    // Volunteer profiles: a user may only write their own document.
+    match /volunteers/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid;
+    }
+  }
+}

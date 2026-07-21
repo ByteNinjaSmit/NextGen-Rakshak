@@ -55,8 +55,8 @@ Three layers:
 ## Setup
 
 ### Prerequisites
-Node 18+, Android Studio, a Firebase project, and Python 3.10–3.12 (for the
-model scripts only).
+Node 18+, JDK 17, Android Studio, a Firebase project, and Python 3.10–3.12 (for
+the model scripts only).
 
 ### 1. Supply the ML model — required
 
@@ -89,8 +89,15 @@ firebase deploy --only functions,firestore:rules,storage:rules
 
 ### 4. Android app
 
-Drop your `google-services.json` into `nextgen-rakshak-mobile/app/`, then open
-the project in Android Studio and run.
+Drop your `google-services.json` into `nextgen-rakshak-mobile/app/`, then either
+open the project in Android Studio, or build from the command line with the
+bundled Gradle wrapper (Gradle 8.14, requires **JDK 17**):
+
+```bash
+cd nextgen-rakshak-mobile
+./gradlew :app:testDebugUnitTest   # compile + run unit tests
+./gradlew :app:assembleDebug       # build the APK
+```
 
 ## Configuration
 

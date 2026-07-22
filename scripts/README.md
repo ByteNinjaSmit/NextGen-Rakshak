@@ -59,9 +59,29 @@ Android assets, and copies the SavedModel for the Cloud Function.
 - **Server**: deploy `functions`, create an alert with a photo, and confirm the
   `onAlertCreated` log reports `dims: 128` on the written embedding.
 
-## Threshold sanity check
+## Measured threshold behaviour
 
-`0.75` is the synopsis figure. Once the model is in place, measure it on real
-photos: embed two photos of the same child (expect well above 0.75) and photos
-of two different children (expect well below). Adjust
-`Constants.SIMILARITY_THRESHOLD` only with measurements to justify it.
+The 0.75 figure from the synopsis was checked against this model using real
+photographs (9 images of 4 people, run through the quantized `.tflite` with the
+app's own crop geometry — 36 pairs total):
+
+| | cosine range |
+|---|---|
+| Same person (15 pairs) | 0.7142 – 0.9899 |
+| Different people (21 pairs) | 0.0864 – 0.3551 |
+| **Separation gap** | **0.3591** |
+
+The model separates identities very cleanly — no different-person pair came
+close to any same-person pair.
+
+At the configured threshold of **0.75**:
+- **False matches: 0 / 21.** No two different people were ever confused.
+- **Missed matches: 5 / 15.** Same-person pairs scoring 0.71–0.75 fall just
+  below the cut, so hard pairs (different lighting, angle, or age) can be missed.
+
+The threshold is therefore *precision-favouring*: when the app reports a match it
+is highly likely to be right, at the cost of not flagging some genuine ones. Any
+value between roughly 0.40 and 0.71 would classify all 36 pairs correctly, so
+lowering `Constants.SIMILARITY_THRESHOLD` (and the matching figure in the
+synopsis) is the lever if field testing shows real children being missed.
+Reproduce these numbers before changing it.

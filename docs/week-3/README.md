@@ -37,7 +37,10 @@ installed and run — including a crash on launch — which is the clearest argu
 this week for exercising the build rather than trusting that it compiles.
 
 The app was then brought to a clean launch on a device: no crash, no Android 15
-compatibility warning, and a login screen that renders correctly.
+compatibility warning, and a login screen that renders correctly. Google sign-in
+was exercised end to end on that device, reaching the home screen and reading
+from Firestore under the new rules — the first proof that authentication, the
+rules and the crash fix hold together at runtime.
 
 This directly advances **Objective 2** (on-device detection and recognition in
 real time), **Objective 7** (privacy and trust by design) and **Objective 8**
@@ -453,6 +456,35 @@ actual `.tflite` using the app's own crop geometry:
 | Login screen layout | heading clear of the status bar and camera cutout |
 | Permission rationale | shown before the system prompt on first launch |
 
+### 8.1 Google sign-in, end to end on a device
+
+With the OAuth client configured in Firebase, the full volunteer sign-in path was
+exercised on a device for the first time:
+
+| Step | Result |
+|---|---|
+| Tap "Continue with Google" | Credential Manager shows the system account picker |
+| Choose an account | "Signing you in" — Google ID token returned |
+| Token exchanged for a Firebase session | succeeded |
+| App navigates to Home | **"Rakshak — Active Alerts"** renders, with "Sign out" in the app bar |
+| Firestore read under the new rules | succeeded — "No active alerts right now", no `PERMISSION_DENIED`, no crash |
+
+![Google account picker](screenshots/signin-google-account-picker.png)
+![Home screen after sign-in](screenshots/home-after-signin.png)
+
+This is the first evidence that authentication, the Firestore rules, and the
+crash fix in §6.4 all hold together at runtime: before the fix this same path
+terminated the process.
+
+### 8.2 16 KB page-size warning, before and after
+
+| Before | After |
+|---|---|
+| ![16 KB warning shown on launch](screenshots/before-16kb-warning.png) | ![no warning after the fix](screenshots/after-16kb-fixed.png) |
+
+The dialog named `libtensorflowlite_jni.so` as unaligned. After moving to LiteRT
+it no longer appears, and the permission rationale is the first thing shown.
+
 Not yet evidenced: server-side inference and both sign-in flows, all three
 blocked on deployment or Firebase configuration rather than on code — see §9.
 
@@ -473,17 +505,14 @@ Stated plainly, because they bound what can currently be claimed:
    per-face target (NFR-03) is not yet evidenced.
 4. **NFR-10 drift:** the synopsis states Android 5.0+ (API 21); the project sets
    `minSdk = 24`. The synopsis figure needs correcting.
-5. **Neither sign-in flow has been exercised at runtime.** Both are blocked on
-   configuration rather than code:
-   - Google sign-in on the app needs an OAuth client, which exists only once the
-     app's SHA-1 is registered in Firebase. The checked-in `google-services.json`
-     currently has no `oauth_client` entry at all. The client therefore resolves
-     the web client ID by name at runtime instead of referencing
-     `R.string.default_web_client_id`, so the project still compiles and reports
-     a clear "not configured" message rather than crashing.
-   - The kiosk locks out **everyone**, including us, until at least one
-     `allowedOfficers/{email}` document exists and the rules and function are
-     deployed.
+5. **Volunteer Google sign-in is now verified end to end** (§8.1) — this
+   limitation is closed for the app. The remaining sign-in gaps are:
+   - The **email/password** and **guest** routes are implemented but not yet
+     exercised on a device; each needs its provider enabled in the Firebase
+     console.
+   - The **kiosk** authorisation path is still untested, and locks out
+     *everyone* until at least one `allowedOfficers/{email}` document exists and
+     the rules and function are deployed.
 
 ---
 

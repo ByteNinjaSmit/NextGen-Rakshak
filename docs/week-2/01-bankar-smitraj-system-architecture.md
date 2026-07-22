@@ -203,8 +203,12 @@ the privacy-by-design claim to hold structurally rather than by policy.
 > **Note on version drift:** the original synopsis listed ML Kit `16.1.5`,
 > TensorFlow Lite `2.14.0`, CameraX `1.3.0`, and Nearby `18.7.0`. During stack
 > finalisation these were moved to the current stable releases shown above.
-> The versions in this table are the ones actually pinned in
-> `app/build.gradle.kts` and `package.json`.
+>
+> This table records the stack **as selected in Week 2**. Several versions were
+> raised again in Week 3 — the TensorFlow Lite runtime was replaced by LiteRT and
+> the Kotlin toolchain upgraded, to satisfy Android 15's 16 KB page-size
+> requirement. See `docs/week-3/README.md` §7 for the current versions and the
+> reason for each change.
 
 ### Selection rationale
 

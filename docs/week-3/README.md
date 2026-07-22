@@ -313,6 +313,44 @@ cd nextgen-rakshak-mobile
 ./gradlew :app:assembleDebug       # build the APK
 ```
 
+### 7.1 16 KB page-size compliance
+
+Android 15 warned on every launch that the app was not 16 KB compatible, naming
+the native libraries whose ELF `LOAD` segments were aligned to 4 KB. Devices with
+16 KB memory pages otherwise fall back to a compatibility mode.
+
+Alignment is a property of each dependency's prebuilt `.so`, so the fix was to
+move to versions that ship aligned binaries: **datastore 1.1.7**, **CameraX
+1.4.2**, and — for the last offender — replacing `org.tensorflow:tensorflow-lite`
+with **`com.google.ai.edge.litert:litert:2.1.6`**, the current name for the same
+runtime. It exposes the identical `org.tensorflow.lite.Interpreter` API, so no
+application code changed.
+
+LiteRT is built against Kotlin 2.3 metadata, which a 1.9 compiler cannot read, so
+it pulled a toolchain upgrade with it:
+
+| Component | Was | Now | Why |
+|---|---|---|---|
+| Kotlin | 1.9.24 | **2.3.21** | LiteRT's metadata version |
+| Compose compiler | `composeOptions` setting | **`kotlin.plugin.compose`** | Separate plugin from Kotlin 2.0 |
+| KSP | 1.9.24-1.0.20 | **2.3.10** | Must track Kotlin |
+| AGP | 8.5.0 | **8.13.2** | KSP 2.3 needs `addKspConfigurations` |
+| compileSdk | 34 | **35** | Required by AGP 8.13 dependencies |
+| Room | 2.6.1 | **2.8.4** | KSP2 failed on the old compiler |
+
+`tensorflow-lite-support` was dropped rather than upgraded: nothing used it, and
+it pulled in the old `tensorflow-lite-api`, whose `org.tensorflow.lite.*` classes
+collide with LiteRT's.
+
+Compliance was verified by reading the `PT_LOAD` `p_align` field directly out of
+the built APK rather than trusting the absence of a warning:
+
+| ABI | Result |
+|---|---|
+| arm64-v8a | all 8 libraries **16384** ✅ |
+| x86_64 | all 9 libraries **16384** ✅ |
+| armeabi-v7a, x86 | ML Kit's face detector remains 4096 — harmless, as the 16 KB requirement applies only to 64-bit ABIs |
+
 ---
 
 ## 8. Verification evidence
@@ -324,6 +362,8 @@ cd nextgen-rakshak-mobile
 | `webportal` `tsc --noEmit` | clean |
 | `verify_parity.py` | cosine **0.99967** (threshold 0.99) |
 | Face separation measurement | gap **0.3591**, 0 false matches / 21 |
+| App on emulator | launches and stays up, **0 fatal exceptions**, no 16 KB warning |
+| APK native libraries | every 64-bit library **16 KB aligned** (checked via ELF `p_align`) |
 
 Not yet evidenced: server-side inference and both sign-in flows, all three
 blocked on deployment or Firebase configuration rather than on code — see §9.

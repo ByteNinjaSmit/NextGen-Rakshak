@@ -26,10 +26,18 @@ inherited from the literature.
 Alongside this we completed the volunteer Android application against the Week 2
 specification, finished the Cloud Functions, and reworked authentication across
 both applications so that signing in and being *authorised* are no longer the
-same thing. Reviewing the code also surfaced four defects: three in the
-recognition path — one of which had silently disabled the entire offline mesh —
-and one in the kiosk that would have let any Google account file or resolve
-missing-child alerts.
+same thing — the app gained Google and email/password sign-in, and the kiosk
+gained an authorisation check it had never had.
+
+Seven defects were found and fixed. Three came from reading the recognition path,
+one of which had silently disabled the entire offline mesh, and one from
+reviewing the kiosk, where any Google account could have filed or resolved
+missing-child alerts. The remaining three only appeared once the app was
+installed and run — including a crash on launch — which is the clearest argument
+this week for exercising the build rather than trusting that it compiles.
+
+The app was then brought to a clean launch on a device: no crash, no Android 15
+compatibility warning, and a login screen that renders correctly.
 
 This directly advances **Objective 2** (on-device detection and recognition in
 real time), **Objective 7** (privacy and trust by design) and **Objective 8**
@@ -201,7 +209,7 @@ The app was audited screen by screen against synopsis §6.2 and the gaps closed.
 Both applications signed people in, but neither checked whether the person was
 allowed to do what they were about to do. This week separated the two concepts.
 
-### 5.1 Volunteer app — "Continue with Google"
+### 5.1 Volunteer app — three sign-in routes
 
 The app previously asked for a phone number in a text box and signed the device
 in **anonymously**. A sighting sent to police therefore carried no identity: the
@@ -210,15 +218,28 @@ one person registering repeatedly. That is incompatible with the synopsis's
 "trusted, pre-registered volunteer" model, on which the system's credibility
 rests.
 
-Volunteers now sign in with Google through **Credential Manager** — the current
-API; the `GoogleSignIn` client it replaces is deprecated. The returned Google ID
-token is exchanged for a Firebase session, and the volunteer's name and email are
-stored with their role and written to `volunteers/{uid}`, so every match is
-attributable to a real account. Sign-out, which did not exist at all, was added.
+| Route | Identity | Implementation |
+|---|---|---|
+| **Continue with Google** | Verified account | Credential Manager — the current API; the `GoogleSignIn` client it replaces is deprecated. The Google ID token is exchanged for a Firebase session |
+| **Email + password** | Verified account | Firebase Email/Password, including account creation for a volunteer issued no credentials |
+| **Continue as guest** | Anonymous | Retained for demonstrations, labelled on screen as creating an account that cannot be traced back to the reporter |
 
-The phone-only path is retained behind a **"Continue without Google (demo)"**
-link, labelled as creating an unverified account, so the app remains
-demonstrable before OAuth is configured for the project.
+For both verified routes the volunteer's name and email are stored with their
+role and written to `volunteers/{uid}`, so every match is attributable to a real
+account. The role is chosen before signing in, because it is what the officer
+sees beside a match and no identity provider can supply it.
+
+Firebase reports email failures as opaque codes such as
+`ERROR_INVALID_CREDENTIAL`. These are translated into text a volunteer can act
+on — wrong password, no such account, address already registered, password too
+short — rather than shown raw.
+
+**Sign-out existed but could not work.** It called `signOut()`, which clears the
+stored profile asynchronously, and *immediately* navigated to the login screen.
+The login screen still saw the previous volunteer and redirected straight back to
+home, leaving the user on the home screen while signed out. Navigation now reacts
+to the profile actually becoming null, so the screen changes only once sign-out
+has taken effect.
 
 ### 5.2 Police kiosk — authentication was not authorisation
 
@@ -270,7 +291,9 @@ Two design points worth noting:
 Firestore rules are the enforcement boundary; the kiosk's UI check is a
 convenience on top of it.
 
-## 6. Defects found by review
+## 6. Defects found
+
+### 6.1–6.3 Found by reading the recognition path
 
 Three bugs were found by reading the recognition path end to end. The first was
 serious.
@@ -296,6 +319,40 @@ A new TFLite interpreter was constructed each time the scan screen opened, so th
 model was re-read and the previous interpreter abandoned (nothing closes one).
 Now a singleton, with 4 inference threads for the <200 ms budget and serialised
 access, since TFLite interpreters are not thread-safe.
+
+### 6.4–6.6 Found by running the app on a device
+
+Installing the build on an emulator surfaced three more that no amount of reading
+had caught. This is the argument for running the thing.
+
+**6.4 A Firestore error killed the whole app.**
+The app crashed on launch:
+
+```
+FATAL EXCEPTION: DefaultDispatcher-worker-3
+com.google.firebase.firestore.FirebaseFirestoreException:
+    PERMISSION_DENIED: Missing or insufficient permissions.
+```
+
+`FirestoreAlertSource` called `close(error)` when its snapshot listener failed.
+That rethrows the exception in every collector, and because the alert flow is
+collected in a ViewModel coroutine, it took the process down. The severity is not
+the permission error itself but the response to it: at a festival, a dropped
+connection or a rules change would kill the app **mid-search**. The listener now
+logs and emits an empty list, keeping the flow alive — and the mesh can still
+deliver alerts when Firestore cannot.
+
+**6.5 A stored profile could outlive its Firebase session.**
+The cause of that permission error was itself a defect. The volunteer profile is
+persisted locally but the Firebase session is not, so once the session was gone
+the app went straight to the home screen and every read was rejected. The login
+view model now discards a stored profile whose session no longer exists, sending
+the volunteer back to sign in.
+
+**6.6 The heading was drawn under the camera cutout.**
+The activity draws edge to edge, but the login screen applied no window insets,
+so "Rakshak Volunteer" was sliced by the status bar and the camera punch-hole.
+Fixed with `safeDrawing` insets.
 
 ---
 
@@ -355,15 +412,46 @@ the built APK rather than trusting the absence of a warning:
 
 ## 8. Verification evidence
 
+Each claim below was produced by running something, not by inspection.
+
+**Build and tests**
+
 | Check | Result |
 |---|---|
 | `./gradlew :app:testDebugUnitTest` | **BUILD SUCCESSFUL** — 13 tests, 0 failures |
-| `functions` `tsc --noEmit` | clean |
-| `webportal` `tsc --noEmit` | clean |
-| `verify_parity.py` | cosine **0.99967** (threshold 0.99) |
-| Face separation measurement | gap **0.3591**, 0 false matches / 21 |
-| App on emulator | launches and stays up, **0 fatal exceptions**, no 16 KB warning |
-| APK native libraries | every 64-bit library **16 KB aligned** (checked via ELF `p_align`) |
+| `./gradlew :app:assembleDebug` | **BUILD SUCCESSFUL** |
+| `functions` `tsc --noEmit` | clean (exit 0) |
+| `webportal` `tsc --noEmit` | clean (exit 0) |
+
+**Model**
+
+| Check | Result |
+|---|---|
+| SavedModel output shape | `(1, 128)`, L2 norm **1.000000** — unit vectors, so cosine is a dot product |
+| `verify_parity.py` (quantized `.tflite` vs source SavedModel) | cosine **0.99967**, threshold 0.99 |
+| Quantisation | 5.9 MB → **1.5 MB**, embedding preserved |
+
+**Recognition accuracy** — 9 photographs of 4 people, 36 pairs, through the
+actual `.tflite` using the app's own crop geometry:
+
+| Metric | Result |
+|---|---|
+| Same-person cosine | 0.7142 – 0.9899 |
+| Different-person cosine | 0.0864 – 0.3551 |
+| Separation gap | **0.3591** |
+| At threshold 0.55 | **0 false matches / 21**, **0 missed / 15** |
+| At threshold 0.75 (previous) | 0 false matches / 21, **5 missed / 15** |
+
+**On device (emulator)**
+
+| Check | Result |
+|---|---|
+| Launch and remain running | process alive after launch |
+| Fatal exceptions | **0** (was a crash on launch before §6.4) |
+| `PageSizeMismatchDialog` | **0 occurrences** (was shown on every launch) |
+| APK native libraries | every 64-bit library **16 KB aligned**, read from ELF `p_align` |
+| Login screen layout | heading clear of the status bar and camera cutout |
+| Permission rationale | shown before the system prompt on first launch |
 
 Not yet evidenced: server-side inference and both sign-in flows, all three
 blocked on deployment or Firebase configuration rather than on code — see §9.

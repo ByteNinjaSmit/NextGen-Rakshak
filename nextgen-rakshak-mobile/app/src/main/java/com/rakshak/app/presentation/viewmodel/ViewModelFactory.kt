@@ -22,6 +22,7 @@ class ViewModelFactory(
                 ServiceLocator.volunteerStore(context),
                 ServiceLocator.auth(),
                 ServiceLocator.volunteerRepository(context),
+                ServiceLocator.googleSignIn(context),
             ) as T
 
         modelClass.isAssignableFrom(HomeViewModel::class.java) ->

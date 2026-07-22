@@ -2,15 +2,20 @@ package com.rakshak.app.presentation.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,11 +29,27 @@ import androidx.compose.ui.unit.sp
 
 private val ROLES = listOf("police", "ncc", "ngo", "community")
 
-/** Mock sign-in: phone + role. Real OTP is out of scope for the MVP. */
+/**
+ * Volunteer sign-in.
+ *
+ * Google is the primary route: a sighting reported to police should be
+ * attributable to an identifiable person, which anonymous sign-in cannot give.
+ * The phone-only route is kept as a clearly-labelled demo fallback so the app
+ * stays usable before OAuth is configured for the project.
+ *
+ * The role is chosen before signing in because it is what the officer sees
+ * beside a match, and it is not something Google can tell us.
+ */
 @Composable
-fun LoginScreen(onSignIn: (phone: String, role: String) -> Unit) {
+fun LoginScreen(
+    onGoogleSignIn: (role: String) -> Unit,
+    onDemoSignIn: (phone: String, role: String) -> Unit,
+    busy: Boolean = false,
+    error: String? = null,
+) {
     var phone by remember { mutableStateOf("") }
     var role by remember { mutableStateOf(ROLES.first()) }
+    var showDemo by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -41,14 +62,7 @@ fun LoginScreen(onSignIn: (phone: String, role: String) -> Unit) {
             modifier = Modifier.padding(bottom = 24.dp),
         )
 
-        OutlinedTextField(
-            value = phone,
-            onValueChange = { phone = it },
-            label = { Text("Phone number") },
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text("Role", modifier = Modifier.padding(top = 16.dp).fillMaxWidth())
+        Text("I am volunteering as", modifier = Modifier.fillMaxWidth())
         ROLES.forEach { option ->
             Row(
                 modifier = Modifier
@@ -63,11 +77,55 @@ fun LoginScreen(onSignIn: (phone: String, role: String) -> Unit) {
         }
 
         Button(
-            onClick = { onSignIn(phone.trim(), role) },
-            enabled = phone.isNotBlank(),
+            onClick = { onGoogleSignIn(role) },
+            enabled = !busy,
             modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
         ) {
-            Text("Sign In")
+            if (busy) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            } else {
+                Text("Continue with Google")
+            }
+        }
+
+        if (error != null) {
+            Text(
+                error,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 20.dp))
+
+        if (!showDemo) {
+            TextButton(onClick = { showDemo = true }, enabled = !busy) {
+                Text("Continue without Google (demo)")
+            }
+        } else {
+            Text(
+                "Demo sign-in — creates an anonymous account with no verified identity.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            )
+            OutlinedTextField(
+                value = phone,
+                onValueChange = { phone = it },
+                label = { Text("Phone number") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = { onDemoSignIn(phone.trim(), role) },
+                enabled = phone.isNotBlank() && !busy,
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Text("Sign In")
+            }
         }
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,10 +31,17 @@ import kotlinx.coroutines.delay
 /** Lists active alerts and lets the volunteer start crowd scanning. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit) {
+fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit, onSignOut: () -> Unit = {}) {
     val alerts by viewModel.activeAlerts.collectAsStateWithLifecycle()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Rakshak — Active Alerts") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Rakshak — Active Alerts") },
+                actions = { TextButton(onClick = onSignOut) { Text("Sign out") } },
+            )
+        },
+    ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),

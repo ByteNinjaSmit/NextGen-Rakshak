@@ -25,11 +25,16 @@ private object Routes {
 
 @Composable
 fun AppNavigation() {
-    val context = LocalContext.current.applicationContext
+    // Credential Manager must be launched from the Activity, not the application
+    // context, so keep both: the Activity for sign-in, the app context for DI.
+    val activityContext = LocalContext.current
+    val context = activityContext.applicationContext
     val navController = rememberNavController()
 
     val loginViewModel: LoginViewModel = viewModel(factory = ViewModelFactory(context))
     val volunteer by loginViewModel.volunteer.collectAsStateWithLifecycle()
+    val signInBusy by loginViewModel.busy.collectAsStateWithLifecycle()
+    val signInError by loginViewModel.error.collectAsStateWithLifecycle()
 
     NavHost(navController = navController, startDestination = Routes.LOGIN) {
         composable(Routes.LOGIN) {
@@ -41,12 +46,26 @@ fun AppNavigation() {
                     }
                 }
             }
-            LoginScreen(onSignIn = loginViewModel::signIn)
+            LoginScreen(
+                onGoogleSignIn = { role -> loginViewModel.signInWithGoogle(activityContext, role) },
+                onDemoSignIn = loginViewModel::signIn,
+                busy = signInBusy,
+                error = signInError,
+            )
         }
 
         composable(Routes.HOME) {
             val homeViewModel: HomeViewModel = viewModel(factory = ViewModelFactory(context))
-            HomeScreen(homeViewModel, onStartScan = { navController.navigate(Routes.SCAN) })
+            HomeScreen(
+                homeViewModel,
+                onStartScan = { navController.navigate(Routes.SCAN) },
+                onSignOut = {
+                    loginViewModel.signOut()
+                    navController.navigate(Routes.LOGIN) {
+                        popUpTo(Routes.HOME) { inclusive = true }
+                    }
+                },
+            )
         }
 
         composable(Routes.SCAN) {

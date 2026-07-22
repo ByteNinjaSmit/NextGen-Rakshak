@@ -19,6 +19,8 @@ class FirestoreVolunteerSource(
             mapOf(
                 "phone" to volunteer.phone,
                 "role" to volunteer.role,
+                "name" to volunteer.name,
+                "email" to volunteer.email,
                 "fcmToken" to fcmToken,
                 "registeredAt" to FieldValue.serverTimestamp(),
             ),

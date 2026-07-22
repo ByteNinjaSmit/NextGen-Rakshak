@@ -1,3 +1,18 @@
 <resources>
     <string name="app_name">Rakshak</string>
+
+    <!--
+      Fallback OAuth *web* client ID for Google sign-in.
+
+      Normally you do NOT need to fill this in: the Google Services Gradle plugin
+      generates `default_web_client_id` from app/google-services.json, and that is
+      preferred automatically. It only appears once the app's SHA-1 fingerprint is
+      registered in the Firebase console (Project settings -> Your apps -> Add
+      fingerprint) and a fresh google-services.json is downloaded.
+
+      Leave blank unless you need to override it. While blank and without an
+      oauth_client entry, "Continue with Google" reports that sign-in is not
+      configured instead of crashing.
+    -->
+    <string name="web_client_id" translatable="false"></string>
 </resources>

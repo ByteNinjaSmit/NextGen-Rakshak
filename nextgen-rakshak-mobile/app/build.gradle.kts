@@ -99,6 +99,11 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging-ktx")
     implementation("com.google.firebase:firebase-auth-ktx")
 
+    // Google sign-in via Credential Manager (the legacy GoogleSignIn API is deprecated)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
     // Nearby Connections (offline mesh)
     implementation("com.google.android.gms:play-services-nearby:19.3.0")
 

@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
 import com.rakshak.app.data.auth.AuthService
 import com.rakshak.app.data.auth.FirebaseAuthService
+import com.rakshak.app.data.auth.GoogleSignInClient
 import com.rakshak.app.data.datasource.FirestoreAlertSource
 import com.rakshak.app.data.datasource.FirestoreMatchSource
 import com.rakshak.app.data.datasource.FirestoreVolunteerSource
@@ -63,6 +64,9 @@ object ServiceLocator {
         VolunteerStore(context.applicationContext)
 
     fun volunteerSource(): FirestoreVolunteerSource = FirestoreVolunteerSource(firestore)
+
+    fun googleSignIn(context: Context): GoogleSignInClient =
+        GoogleSignInClient(context.applicationContext)
 
     fun volunteerRepository(context: Context): VolunteerRepository =
         DefaultVolunteerRepository(

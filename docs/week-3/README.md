@@ -19,14 +19,21 @@ quoted figures.
 The headline outcome is that the recognition pipeline now works end to end. We
 sourced pretrained MobileFaceNet weights, built a reproducible conversion
 pipeline that produces the device and server models from a *single* source, and
-measured the system's actual accuracy on real photographs. Alongside this we
-completed the volunteer Android application against the Week 2 specification,
-finished the Cloud Functions, and fixed three defects found by reviewing the
-recognition path — one of which had silently disabled the entire offline mesh.
+measured the system's actual accuracy on real photographs — which led us to
+revise the match threshold on evidence rather than keep the figure we had
+inherited from the literature.
+
+Alongside this we completed the volunteer Android application against the Week 2
+specification, finished the Cloud Functions, and reworked authentication across
+both applications so that signing in and being *authorised* are no longer the
+same thing. Reviewing the code also surfaced four defects: three in the
+recognition path — one of which had silently disabled the entire offline mesh —
+and one in the kiosk that would have let any Google account file or resolve
+missing-child alerts.
 
 This directly advances **Objective 2** (on-device detection and recognition in
-real time) and **Objective 8** (validating the system's effectiveness rather than
-asserting it).
+real time), **Objective 7** (privacy and trust by design) and **Objective 8**
+(validating the system's effectiveness rather than asserting it).
 
 ---
 
@@ -189,12 +196,86 @@ The app was audited screen by screen against synopsis §6.2 and the gaps closed.
 
 ---
 
-## 5. Defects found by review
+## 5. Authentication and authorisation
+
+Both applications signed people in, but neither checked whether the person was
+allowed to do what they were about to do. This week separated the two concepts.
+
+### 5.1 Volunteer app — "Continue with Google"
+
+The app previously asked for a phone number in a text box and signed the device
+in **anonymously**. A sighting sent to police therefore carried no identity: the
+officer receiving it had no way to know who reported it, and nothing prevented
+one person registering repeatedly. That is incompatible with the synopsis's
+"trusted, pre-registered volunteer" model, on which the system's credibility
+rests.
+
+Volunteers now sign in with Google through **Credential Manager** — the current
+API; the `GoogleSignIn` client it replaces is deprecated. The returned Google ID
+token is exchanged for a Firebase session, and the volunteer's name and email are
+stored with their role and written to `volunteers/{uid}`, so every match is
+attributable to a real account. Sign-out, which did not exist at all, was added.
+
+The phone-only path is retained behind a **"Continue without Google (demo)"**
+link, labelled as creating an unverified account, so the app remains
+demonstrable before OAuth is configured for the project.
+
+### 5.2 Police kiosk — authentication was not authorisation
+
+Reviewing the kiosk surfaced the most serious defect of the week.
+
+The portal authenticated officers with Google but never checked **which** Google
+account had signed in — so any account on the internet could reach the full
+kiosk. Compounding it, `firestore.rules` permitted `alerts` create and update to
+anyone satisfying `signedIn()`, and that includes every volunteer device, because
+the app signs in anonymously. The practical consequence: a volunteer's phone, or
+any stranger with a Google account, could file fabricated missing-child alerts or
+mark genuine ones resolved.
+
+Synopsis §6.1.1 had already specified the remedy — *"attaches a `role: police`
+custom claim; Firestore security rules use this claim to gate write access to the
+alerts collection"* — it had simply never been implemented. It now is:
+
+```mermaid
+flowchart TB
+    A[Officer signs in with Google] --> B[claimOfficerRole callable]
+    B --> C{email in<br/>allowedOfficers?}
+    C -->|no| D[Signed straight back out<br/>with an explanation]
+    C -->|yes| E[Grant custom claim<br/>role = police]
+    E --> F[Client refreshes ID token]
+    F --> G[Firestore rules allow<br/>alert writes]
+
+    classDef no fill:#ffebee,stroke:#c62828
+    classDef yes fill:#e8f5e9,stroke:#2e7d32
+    class D no
+    class E,F,G yes
+```
+
+| Principal | Signs in via | Permitted writes |
+|---|---|---|
+| Officer (kiosk) | Google **+** `allowedOfficers` entry → `police` claim | Create/resolve alerts; update match status |
+| Volunteer (app) | Google (anonymous = demo fallback) | Own `volunteers/{uid}` doc; create matches |
+| Any signed-in user | — | Nothing further; no client may delete anything |
+
+Two design points worth noting:
+
+- **The allow-list is invisible to clients.** `allowedOfficers` denies all client
+  read and write, so it is reachable only by the Admin SDK inside the Cloud
+  Function. A signed-in user can neither enumerate authorised officers nor add
+  themselves.
+- **The claim is re-checked on every auth state change,** not just at sign-in. A
+  session restored on page reload never passes through the sign-in path, so
+  checking only there would have left the hole open.
+
+Firestore rules are the enforcement boundary; the kiosk's UI check is a
+convenience on top of it.
+
+## 6. Defects found by review
 
 Three bugs were found by reading the recognition path end to end. The first was
 serious.
 
-**5.1 The offline mesh was silently carrying nothing.**
+**6.1 The offline mesh was silently carrying nothing.**
 Alert timestamps were read from Firestore as epoch **seconds** while every
 consumer treated them as **milliseconds**. The resulting age of every alert
 computed to roughly 55 years, so the expiry check rejected *everything*:
@@ -202,7 +283,7 @@ broadcasting bailed out immediately and every received packet was dropped. The
 offline path — a core contribution of the project — did nothing, with no error to
 reveal it. Fixed, unit documented on the model, and pinned by a regression test.
 
-**5.2 Device and server framed faces differently.**
+**6.2 Device and server framed faces differently.**
 Both sides squashed a raw detector box into the square 112×112 input, but the
 device detects with ML Kit and the server with BlazeFace, whose boxes frame faces
 differently — so the same child produced differently framed inputs, and
@@ -210,7 +291,7 @@ non-square boxes were distorted by an aspect-dependent amount. Against a fixed
 threshold this systematically depressed true matches. Both sides now crop a
 square centred on the box with a shared 0.2 margin.
 
-**5.3 The model was reloaded and leaked on every scan.**
+**6.3 The model was reloaded and leaked on every scan.**
 A new TFLite interpreter was constructed each time the scan screen opened, so the
 model was re-read and the previous interpreter abandoned (nothing closes one).
 Now a singleton, with 4 inference threads for the <200 ms budget and serialised
@@ -218,7 +299,7 @@ access, since TFLite interpreters are not thread-safe.
 
 ---
 
-## 6. Build infrastructure
+## 7. Build infrastructure
 
 The Android module had `gradle-wrapper.properties` but no `gradlew`,
 `gradlew.bat`, or `gradle-wrapper.jar`, so it could only be built from Android
@@ -234,7 +315,7 @@ cd nextgen-rakshak-mobile
 
 ---
 
-## 7. Verification evidence
+## 8. Verification evidence
 
 | Check | Result |
 |---|---|
@@ -244,9 +325,12 @@ cd nextgen-rakshak-mobile
 | `verify_parity.py` | cosine **0.99967** (threshold 0.99) |
 | Face separation measurement | gap **0.3591**, 0 false matches / 21 |
 
+Not yet evidenced: server-side inference and both sign-in flows, all three
+blocked on deployment or Firebase configuration rather than on code — see §9.
+
 ---
 
-## 8. Known limitations
+## 9. Known limitations
 
 Stated plainly, because they bound what can currently be claimed:
 
@@ -261,15 +345,29 @@ Stated plainly, because they bound what can currently be claimed:
    per-face target (NFR-03) is not yet evidenced.
 4. **NFR-10 drift:** the synopsis states Android 5.0+ (API 21); the project sets
    `minSdk = 24`. The synopsis figure needs correcting.
+5. **Neither sign-in flow has been exercised at runtime.** Both are blocked on
+   configuration rather than code:
+   - Google sign-in on the app needs an OAuth client, which exists only once the
+     app's SHA-1 is registered in Firebase. The checked-in `google-services.json`
+     currently has no `oauth_client` entry at all. The client therefore resolves
+     the web client ID by name at runtime instead of referencing
+     `R.string.default_web_client_id`, so the project still compiles and reports
+     a clear "not configured" message rather than crashing.
+   - The kiosk locks out **everyone**, including us, until at least one
+     `allowedOfficers/{email}` document exists and the rules and function are
+     deployed.
 
 ---
 
-## 9. Next week (Week 4)
+## 10. Next week (Week 4)
 
 1. Run the app on physical devices and record real cosine scores and per-face
    inference times — closing limitations 2 and 3.
 2. Deploy the Cloud Functions and confirm server-side embedding — closing
    limitation 1.
-3. Multi-device mesh trial: verify multi-hop relay and TTL behaviour with three
+3. Finish the sign-in configuration and test both flows end to end: register the
+   SHA-1 for Google sign-in on the app, and add an officer to `allowedOfficers`
+   for the kiosk — closing limitation 5.
+4. Multi-device mesh trial: verify multi-hop relay and TTL behaviour with three
    or more phones and no internet.
 4. Begin the optional Raspberry Pi node if the above is stable.

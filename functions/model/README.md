@@ -1,28 +1,32 @@
-# MobileFaceNet model (TensorFlow.js GraphModel)
+# MobileFaceNet model (TensorFlow SavedModel)
 
-The function loads the embedding model from `functions/model/model.json`
-(+ its `*.bin` weight shards). It is **not committed** (size/licensing).
+The function loads the embedding model from `functions/model/savedmodel/` via
+`tf.node.loadSavedModel`. It is **not committed** (size/licensing) — generate it
+with `scripts/convert_models.py`.
 
-## Why a tfjs model here (not the Android .tflite)?
-`@tensorflow/tfjs-node` loads TF.js GraphModels, not `.tflite`. Convert the SAME
-MobileFaceNet weights used by the Android app (`mobilefacenet.tflite`) so the
-server and on-device embeddings are comparable.
+## Why a SavedModel here (not a tfjs GraphModel)?
+`tfjs-node` can load a TensorFlow SavedModel directly, so the server runs the
+*same graph* that `convert_models.py` quantized into the Android
+`mobilefacenet.tflite`. Converting to a tfjs GraphModel would add a second
+conversion that could drift from the first — and `tensorflowjs_converter` cannot
+run on Windows anyway (it imports `tensorflow_decision_forests`, which has no
+Windows build).
 
-## Convert once (Python)
+## Generate it
 ```bash
-pip install tensorflowjs
-# From a SavedModel / Keras / frozen graph of the SAME MobileFaceNet:
-tensorflowjs_converter \
-  --input_format=tf_saved_model \
-  --output_format=tfjs_graph_model \
-  ./mobilefacenet_savedmodel \
-  ./functions/model
+pip install tensorflow
+python scripts/convert_models.py --saved-model ./mobilefacenet_savedmodel
+python scripts/verify_parity.py  --saved-model ./mobilefacenet_savedmodel
 ```
-Result: `functions/model/model.json` + `group1-shard*.bin`.
+Result: `functions/model/savedmodel/{saved_model.pb,variables/}`.
+
+See `scripts/README.md` for where to get the source SavedModel.
 
 ## Contract (must match Android)
 - Input: `[1, 112, 112, 3]`, RGB, normalized `(px - 127.5) / 127.5`.
-- Output: `[1, 128]` face embedding.
+- Output: `[1, 128]`, already L2-normalized by the graph.
+- Face crop: square centred on the detected box, padded by `FACE_CROP_MARGIN`
+  (0.2) — mirrored in Android's `FacePreprocessor`.
 - Matching: cosine similarity, threshold **0.75**.
 
 If the server model differs from the Android one, cosine scores won't line up

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Emit BOTH Rakshak embedding artifacts from ONE MobileFaceNet SavedModel.
 
-Why one source: the Android app (`mobilefacenet.tflite`) and the Firebase
-Cloud Function (tfjs GraphModel in `functions/model/`) must use the *same*
-weights, or cosine scores between a server-computed alert embedding and an
-on-device scan embedding won't line up and matches are silently missed.
-This script derives both from a single SavedModel so they always agree.
+Why one source: the Android app (`mobilefacenet.tflite`) and the Firebase Cloud
+Function (`functions/model/savedmodel/`) must use the *same* weights, or cosine
+scores between a server-computed alert embedding and an on-device scan embedding
+won't line up and matches are silently missed. The device gets a quantized
+.tflite; the server loads the SavedModel itself via `tf.node.loadSavedModel`, so
+there is no second conversion that could drift from the first.
 
 Contract enforced (must match FacePreprocessor + TFLiteEmbeddingExtractor and
 functions/src/embedding.ts):
@@ -13,16 +14,17 @@ functions/src/embedding.ts):
   output: [1, 128] face embedding
 
 Usage:
-  pip install "tensorflow>=2.14,<2.16" tensorflowjs
+  pip install tensorflow
   python scripts/convert_models.py --saved-model ./mobilefacenet_savedmodel
+  python scripts/verify_parity.py  --saved-model ./mobilefacenet_savedmodel
 
 Get a MobileFaceNet SavedModel first (weights are NOT committed — size/licensing).
-See scripts/README.md for vetted sources and how to produce a SavedModel.
+See scripts/README.md for a vetted source and the exact steps.
 """
 from __future__ import annotations
 
 import argparse
-import subprocess
+import shutil
 import sys
 from pathlib import Path
 
@@ -69,20 +71,20 @@ def export_tflite(saved_model_dir: Path) -> None:
     print(f"  wrote {ANDROID_ASSET}  ({len(tflite) / 1024:.0f} KB)")
 
 
-def export_tfjs(saved_model_dir: Path) -> None:
-    FUNCTIONS_MODEL_DIR.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        sys.executable, "-m", "tensorflowjs.converters.converter",
-        "--input_format=tf_saved_model",
-        "--output_format=tfjs_graph_model",
-        str(saved_model_dir),
-        str(FUNCTIONS_MODEL_DIR),
-    ]
-    print("  running:", " ".join(cmd))
-    result = subprocess.run(cmd)
-    if result.returncode != 0:
-        fail("tensorflowjs_converter failed. Is `tensorflowjs` installed?")
-    print(f"  wrote {FUNCTIONS_MODEL_DIR / 'model.json'} (+ weight shards)")
+def export_server_model(saved_model_dir: Path) -> None:
+    """Copy the SavedModel for the Cloud Function to load via tf.node.loadSavedModel.
+
+    Deliberately NOT a tfjs GraphModel conversion: loading the SavedModel directly
+    means the server runs the very same graph this script quantized into the
+    Android .tflite, with no converter in between to introduce drift. It also
+    avoids tensorflowjs_converter, which cannot run on Windows (it imports
+    tensorflow_decision_forests, which has no Windows build).
+    """
+    dest = FUNCTIONS_MODEL_DIR / "savedmodel"
+    if dest.exists():
+        shutil.rmtree(dest)
+    shutil.copytree(saved_model_dir, dest)
+    print(f"  copied SavedModel -> {dest}")
 
 
 def main() -> None:
@@ -98,8 +100,8 @@ def main() -> None:
     check_contract(args.saved_model)
     print("[2/3] Exporting Android mobilefacenet.tflite...")
     export_tflite(args.saved_model)
-    print("[3/3] Exporting server tfjs GraphModel...")
-    export_tfjs(args.saved_model)
+    print("[3/3] Copying SavedModel for the Cloud Function...")
+    export_server_model(args.saved_model)
     print("\nDone. Next: run scripts/verify_parity.py to confirm the two "
           "artifacts produce matching embeddings.")
 

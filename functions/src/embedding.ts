@@ -7,14 +7,30 @@ import * as blazeface from "@tensorflow-models/blazeface";
 const INPUT_SIZE = 112;
 /** Must equal Constants.FACE_CROP_MARGIN in the Android app. */
 const FACE_CROP_MARGIN = 0.2;
-const MODEL_URL = `file://${path.join(__dirname, "..", "model", "model.json")}`;
+/**
+ * The MobileFaceNet TensorFlow SavedModel, loaded directly rather than converted
+ * to a tfjs GraphModel. Loading the SavedModel is what guarantees the server runs
+ * the *identical* graph that `scripts/convert_models.py` quantized into the
+ * Android `mobilefacenet.tflite`, with no conversion step in between to drift.
+ */
+const MODEL_DIR = path.join(__dirname, "..", "model", "savedmodel");
 
-let embedder: tf.GraphModel | null = null;
+/** tfjs-node does not re-export the SavedModel handle type, so derive it. */
+type LoadedSavedModel = Awaited<ReturnType<typeof tf.node.loadSavedModel>>;
+
+let embedder: LoadedSavedModel | null = null;
 let detector: blazeface.BlazeFaceModel | null = null;
 
 async function ensureLoaded(): Promise<void> {
-  if (!embedder) embedder = await tf.loadGraphModel(MODEL_URL);
+  if (!embedder) embedder = await tf.node.loadSavedModel(MODEL_DIR);
   if (!detector) detector = await blazeface.load();
+}
+
+/** The SavedModel signature has a single named output; accept either shape. */
+function firstTensor(result: tf.Tensor | tf.Tensor[] | tf.NamedTensorMap): tf.Tensor {
+  if (Array.isArray(result)) return result[0];
+  if (result instanceof tf.Tensor) return result;
+  return Object.values(result)[0];
 }
 
 /**
@@ -31,7 +47,7 @@ export async function computeEmbedding(imageBuffer: Buffer): Promise<number[]> {
   // Resize -> normalize to [-1, 1] -> add batch dim -> infer.
   const resized = tf.image.resizeBilinear(face, [INPUT_SIZE, INPUT_SIZE]);
   const normalized = resized.sub(127.5).div(127.5).expandDims(0);
-  const output = embedder!.predict(normalized) as tf.Tensor;
+  const output = firstTensor(embedder!.predict(normalized));
 
   const embedding = Array.from(await output.data());
   tf.dispose([decoded, face, resized, normalized, output]);

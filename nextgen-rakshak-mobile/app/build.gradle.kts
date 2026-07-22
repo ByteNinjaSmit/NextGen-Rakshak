@@ -1,13 +1,21 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
 }
 
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.rakshak.app"
-    compileSdk = 34
+    compileSdk = 35
     buildToolsVersion = "35.0.0"
 
     defaultConfig {
@@ -19,10 +27,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            val storeFilePath = localProperties.getProperty("RELEASE_STORE_FILE")
+            if (storeFilePath != null) {
+                storeFile = rootProject.file(storeFilePath)
+                storePassword = localProperties.getProperty("RELEASE_STORE_PASSWORD")
+                keyAlias = localProperties.getProperty("RELEASE_KEY_ALIAS")
+                keyPassword = localProperties.getProperty("RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -30,14 +51,13 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
     }
     buildFeatures {
         compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.14"
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -74,9 +94,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.6.0")
 
     // Room — offline pending-match store
-    implementation("androidx.room:room-runtime:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
-    ksp("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:2.8.4")
+    implementation("androidx.room:room-ktx:2.8.4")
+    ksp("androidx.room:room-compiler:2.8.4")
 
     // WorkManager — background sync of pending matches
     implementation("androidx.work:work-runtime-ktx:2.9.0")
@@ -89,11 +109,19 @@ dependencies {
     // ML Kit face detection
     implementation("com.google.mlkit:face-detection:16.1.7")
 
-    // TensorFlow Lite (MobileFaceNet embeddings).
-    // tensorflow-lite-support is deliberately absent: nothing in the app used it,
-    // and it drags in the old tensorflow-lite-api, which collides with the LiteRT
-    // API that TFLite 2.17 depends on (duplicate org.tensorflow.lite.* classes).
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
+    // LiteRT — the current name for the TensorFlow Lite runtime (MobileFaceNet
+    // embeddings). Same org.tensorflow.lite.Interpreter API as org.tensorflow:
+    // tensorflow-lite, so this is a drop-in replacement.
+    //
+    // Used in preference to org.tensorflow:tensorflow-lite because that artifact
+    // still ships an x86_64 libtensorflowlite_jni.so aligned to 4 KB, which makes
+    // Android 15 raise a "not 16 KB compatible" warning on launch. Every LiteRT
+    // .so is 16 KB aligned on all three ABIs.
+    //
+    // tensorflow-lite-support is deliberately absent: nothing used it, and it
+    // pulls in the old tensorflow-lite-api, whose org.tensorflow.lite.* classes
+    // collide with LiteRT's.
+    implementation("com.google.ai.edge.litert:litert:2.1.6")
 
     // Firebase (Firestore + Cloud Messaging)
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))

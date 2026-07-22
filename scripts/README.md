@@ -12,7 +12,7 @@ server and on the phone are directly comparable:
 **Shared contract:** input `[1,112,112,3]` RGB, normalized `(px - 127.5)/127.5`;
 output `[1,128]`, already L2-normalized by the graph; face crop = square centred
 on the detector box padded by `FACE_CROP_MARGIN` (0.2); matching = cosine
-similarity, threshold `0.75`.
+similarity, threshold `0.55` (see the measurements below).
 
 ## Source weights
 
@@ -74,14 +74,25 @@ app's own crop geometry — 36 pairs total):
 The model separates identities very cleanly — no different-person pair came
 close to any same-person pair.
 
-At the configured threshold of **0.75**:
-- **False matches: 0 / 21.** No two different people were ever confused.
-- **Missed matches: 5 / 15.** Same-person pairs scoring 0.71–0.75 fall just
-  below the cut, so hard pairs (different lighting, angle, or age) can be missed.
+### Why the threshold is 0.55, not the synopsis's 0.75
 
-The threshold is therefore *precision-favouring*: when the app reports a match it
-is highly likely to be right, at the cost of not flagging some genuine ones. Any
-value between roughly 0.40 and 0.71 would classify all 36 pairs correctly, so
-lowering `Constants.SIMILARITY_THRESHOLD` (and the matching figure in the
-synopsis) is the lever if field testing shows real children being missed.
-Reproduce these numbers before changing it.
+The two groups are separated by an empty band from **0.3551 to 0.7142**. Any
+threshold inside that band classifies all 36 pairs correctly.
+
+`0.75` sits *above* the band — inside the same-person range — and so misses
+genuine matches:
+
+| Threshold | False matches | Missed matches |
+|---|---|---|
+| 0.75 (synopsis) | 0 / 21 | **5 / 15** — same-person pairs at 0.71–0.75 fall below the cut |
+| **0.55 (configured)** | **0 / 21** | **0 / 15** |
+
+0.55 sits near the middle of the empty band, leaving roughly 0.19 of headroom on
+each side, so it tolerates harder real-world pairs than the sample contains.
+
+The asymmetry of the errors justifies favouring the lower value: a missed child
+is the failure the system exists to prevent, whereas a false candidate costs only
+the moment a volunteer takes to tap "Not a match" — the design already requires
+every match to be human-confirmed, so false positives are cheap by construction.
+
+Reproduce these numbers before changing the value again.

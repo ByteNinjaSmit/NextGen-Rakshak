@@ -103,7 +103,7 @@ cd nextgen-rakshak-mobile
 
 | Setting | Value | Where |
 |---------|-------|-------|
-| Face-match threshold | cosine > 0.75 | `Constants.SIMILARITY_THRESHOLD` |
+| Face-match threshold | cosine > 0.55 (measured — see [`scripts/README.md`](scripts/README.md)) | `Constants.SIMILARITY_THRESHOLD` |
 | Embedding size | 128-d | `Constants.EMBEDDING_SIZE` |
 | Face input | 112×112 RGB, `(px-127.5)/127.5` | app + `functions/src/embedding.ts` |
 | Alert expiry | 8 hours | `Constants.ALERT_EXPIRY_MILLIS`, `functions/src/index.ts` |

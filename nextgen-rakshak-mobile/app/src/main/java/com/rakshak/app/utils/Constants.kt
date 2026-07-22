@@ -6,7 +6,21 @@ object Constants {
     const val MODEL_ASSET = "mobilefacenet.tflite"
     const val FACE_INPUT_SIZE = 112       // MobileFaceNet input is 112x112
     const val EMBEDDING_SIZE = 128
-    const val SIMILARITY_THRESHOLD = 0.75f
+    /**
+     * Cosine similarity above which a face is treated as a candidate match.
+     *
+     * Set from measurement, not from the literature. Across 36 real photo pairs
+     * run through this exact model, same-person scores spanned 0.7142–0.9899 and
+     * different-person scores spanned 0.0864–0.3551. The original 0.75 sat inside
+     * the same-person range and missed 5 of 15 genuine pairs; 0.55 sits in the
+     * empty gap between the two groups and classifies all 36 correctly.
+     *
+     * Lower is the safer error here: a missed child is the failure the system
+     * exists to prevent, while a false candidate costs only the moment a
+     * volunteer takes to tap "Not a match" — every match is human-confirmed.
+     * See scripts/README.md for the measurements.
+     */
+    const val SIMILARITY_THRESHOLD = 0.55f
 
     /**
      * Head-pose limits for discarding non-frontal faces before embedding.

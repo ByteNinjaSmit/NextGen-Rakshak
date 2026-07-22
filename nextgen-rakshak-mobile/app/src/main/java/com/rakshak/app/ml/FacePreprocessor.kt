@@ -12,7 +12,7 @@ object FacePreprocessor {
      * Crops the face to the model input.
      *
      * The crop is a **square centred on the detector box**, not the raw box. Two
-     * reasons, both of which affect whether a true match clears the 0.75 threshold:
+     * reasons, both of which affect whether a true match clears the similarity threshold:
      *
      * 1. Squashing a non-square box into a square 112x112 input distorts the face
      *    by a factor that depends on the box's aspect ratio.

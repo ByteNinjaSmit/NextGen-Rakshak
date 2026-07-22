@@ -1,5 +1,6 @@
 package com.rakshak.app.domain.matching
 
+import com.rakshak.app.utils.Constants
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -32,7 +33,8 @@ class CosineEmbeddingComparatorTest {
     fun similarVectors_clearThreshold() {
         val a = floatArrayOf(0.9f, 0.1f, 0.2f)
         val b = floatArrayOf(0.85f, 0.12f, 0.25f)
-        assertTrue(comparator.similarity(a, b) > 0.75f)
+        // Compare against the real match threshold so this tracks it if it changes.
+        assertTrue(comparator.similarity(a, b) > Constants.SIMILARITY_THRESHOLD)
     }
 
     @Test

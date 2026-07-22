@@ -27,7 +27,8 @@ See `scripts/README.md` for where to get the source SavedModel.
 - Output: `[1, 128]`, already L2-normalized by the graph.
 - Face crop: square centred on the detected box, padded by `FACE_CROP_MARGIN`
   (0.2) — mirrored in Android's `FacePreprocessor`.
-- Matching: cosine similarity, threshold **0.75**.
+- Matching: cosine similarity, threshold **0.55** (set from measurement — see
+  `scripts/README.md`).
 
 If the server model differs from the Android one, cosine scores won't line up
 and matches will be missed.

@@ -48,7 +48,8 @@ fun AppNavigation() {
             }
             LoginScreen(
                 onGoogleSignIn = { role -> loginViewModel.signInWithGoogle(activityContext, role) },
-                onDemoSignIn = loginViewModel::signIn,
+                onEmailSignIn = loginViewModel::signInWithEmail,
+                onAnonymousSignIn = loginViewModel::signIn,
                 busy = signInBusy,
                 error = signInError,
             )
@@ -56,15 +57,22 @@ fun AppNavigation() {
 
         composable(Routes.HOME) {
             val homeViewModel: HomeViewModel = viewModel(factory = ViewModelFactory(context))
-            HomeScreen(
-                homeViewModel,
-                onStartScan = { navController.navigate(Routes.SCAN) },
-                onSignOut = {
-                    loginViewModel.signOut()
+
+            // Leave on sign-out only once the profile is actually cleared. Navigating
+            // from the button instead would race the async sign-out: the login screen
+            // would still see the old volunteer and bounce straight back here.
+            LaunchedEffect(volunteer) {
+                if (volunteer == null) {
                     navController.navigate(Routes.LOGIN) {
                         popUpTo(Routes.HOME) { inclusive = true }
                     }
-                },
+                }
+            }
+
+            HomeScreen(
+                homeViewModel,
+                onStartScan = { navController.navigate(Routes.SCAN) },
+                onSignOut = loginViewModel::signOut,
             )
         }
 

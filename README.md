@@ -110,17 +110,26 @@ Drop your `google-services.json` into `nextgen-rakshak-mobile/app/`, then either
 open the project in Android Studio, or build from the command line with the
 bundled Gradle wrapper (Gradle 8.14, requires **JDK 17**):
 
-> **Enable "Continue with Google" first.** Volunteer sign-in uses Google via
-> Credential Manager, which needs an OAuth client that only exists once your
-> app's signing fingerprint is registered:
+> **Enable the sign-in providers first.** The app offers three routes, and each
+> needs its provider switched on under Firebase console →
+> **Authentication → Sign-in method**:
+>
+> | Route | Provider to enable |
+> |---|---|
+> | Continue with Google | **Google** (plus the SHA-1 steps below) |
+> | Email + password | **Email/Password** |
+> | Continue as guest (demo) | **Anonymous** |
+>
+> Google additionally needs an OAuth client, which only exists once your app's
+> signing fingerprint is registered:
 >
 > 1. Get the debug SHA-1: `cd nextgen-rakshak-mobile && ./gradlew signingReport`
 > 2. Firebase console → Project settings → Your apps → Android → **Add fingerprint**
 > 3. Enable **Authentication → Sign-in method → Google**
 > 4. Re-download `google-services.json` and replace the existing one
 >
-> Until then the button reports that sign-in is not configured, and the demo
-> (anonymous) fallback on the login screen still works. Repeat step 1–2 with the
+> Until then the Google button reports that sign-in is not configured; the
+> email/password and guest routes are unaffected. Repeat steps 1–2 with the
 > release SHA-1 before distributing a release build.
 
 ```bash

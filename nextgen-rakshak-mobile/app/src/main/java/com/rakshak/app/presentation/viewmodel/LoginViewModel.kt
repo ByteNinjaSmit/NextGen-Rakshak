@@ -65,7 +65,34 @@ class LoginViewModel(
         }
     }
 
-    /** Demo fallback used when Google sign-in has not been configured yet. */
+    /**
+     * Email/password sign-in. [register] creates the account first, for a
+     * volunteer who has not been issued one.
+     */
+    fun signInWithEmail(email: String, password: String, role: String, register: Boolean) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            _busy.value = true
+            _error.value = null
+            runCatching {
+                val user =
+                    if (register) authService.registerWithEmail(email, password)
+                    else authService.signInWithEmail(email, password)
+                val volunteer = Volunteer(
+                    id = user.uid,
+                    phone = "",
+                    role = role,
+                    name = user.displayName.orEmpty(),
+                    email = user.email.orEmpty(),
+                )
+                store.save(volunteer)
+                volunteers.register(volunteer) // best-effort FCM registration
+            }.onFailure { _error.value = it.message ?: "Sign-in failed" }
+            _busy.value = false
+        }
+    }
+
+    /** Demo fallback: anonymous account, no verified identity. */
     fun signIn(phone: String, role: String) {
         if (_busy.value) return
         viewModelScope.launch {

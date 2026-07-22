@@ -5,9 +5,14 @@ import { useAuth } from "@/components/auth-provider";
 import { LoginScreen } from "@/components/login-screen";
 import { SidebarNav } from "@/components/sidebar-nav";
 
-/** Gates the kiosk: shows the Google login until an officer is signed in. */
+/**
+ * Gates the kiosk. Requires both a signed-in Google account **and** the `police`
+ * custom claim — an authenticated but unauthorised account is shown the login
+ * screen, never the kiosk. Firestore rules enforce the same claim server-side,
+ * so this is a UX guard rather than the security boundary.
+ */
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, isOfficer, loading } = useAuth();
 
   if (loading) {
     return (
@@ -17,7 +22,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user || !isOfficer) return <LoginScreen />;
 
   return (
     <div className="flex h-screen overflow-hidden">

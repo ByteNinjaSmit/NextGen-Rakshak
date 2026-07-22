@@ -9,6 +9,8 @@ import * as logger from "firebase-functions/logger";
 import { computeEmbedding } from "./embedding";
 import { broadcastAlert } from "./notify";
 
+export { claimOfficerRole } from "./officers";
+
 initializeApp();
 
 // Alerts auto-expire this long after creation (synopsis FR-12 default; matches

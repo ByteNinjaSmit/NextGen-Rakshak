@@ -3,8 +3,11 @@ rules_version = '2';
 // Rakshak Firestore rules.
 // Everyone touching data must be authenticated:
 //   - Police officers on the web kiosk sign in with Google.
-//   - Volunteer devices sign in anonymously.
-// Tighten later with a custom `police` claim to gate alert creation.
+//   - Volunteer devices sign in with Google (anonymous is a demo fallback).
+//
+// Authentication is not authorisation. Any Google account can sign in, so
+// alert writes are gated on a `police` custom claim, granted only to
+// allow-listed officers by the claimOfficerRole Cloud Function.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,19 +15,25 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Missing-child alerts. Created by the kiosk, read by everyone signed in.
+    function isPolice() {
+      return signedIn() && request.auth.token.role == 'police';
+    }
+
+    // Missing-child alerts. Filed and resolved by the kiosk; read by every
+    // signed-in device so volunteers can match against them.
     match /alerts/{alertId} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create, update: if isPolice();
       allow delete: if false;
     }
 
     // Match sightings reported by volunteers.
     match /matches/{matchId} {
       allow read: if signedIn();
+      // Any signed-in volunteer may report a sighting.
       allow create: if signedIn();
-      // Only status updates (e.g. -> dispatched) from the kiosk.
-      allow update: if signedIn();
+      // Only the kiosk changes a match's status (e.g. -> dispatched).
+      allow update: if isPolice();
       allow delete: if false;
     }
 
@@ -32,6 +41,14 @@ service cloud.firestore {
     match /volunteers/{uid} {
       allow read: if signedIn();
       allow write: if signedIn() && request.auth.uid == uid;
+    }
+
+    // Officer allow-list. No client access at all — it is read only by the
+    // Admin SDK inside claimOfficerRole, so a signed-in user can neither
+    // enumerate authorised officers nor add themselves. Manage it from the
+    // Firebase console.
+    match /allowedOfficers/{email} {
+      allow read, write: if false;
     }
   }
 }

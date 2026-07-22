@@ -87,6 +87,23 @@ cd functions && npm install
 firebase deploy --only functions,firestore:rules,storage:rules
 ```
 
+#### Authorise the first officer — required
+
+Signing in with Google proves identity, not authority. Alert writes are gated on
+a `police` custom claim that `claimOfficerRole` grants only to allow-listed
+accounts, so **nobody can use the kiosk until you add at least one officer**:
+
+> Firestore → create collection **`allowedOfficers`** → document ID = the
+> officer's lowercase Google email (e.g. `officer@gmail.com`). The document
+> body can be empty; only its existence is checked.
+
+The collection is unreadable and unwritable from any client — it is read solely
+by the Admin SDK inside the function — so a signed-in user can neither list
+authorised officers nor add themselves. Manage it from the Firebase console.
+
+An account that signs in without being allow-listed is signed straight back out
+with an explanatory message.
+
 ### 4. Android app
 
 Drop your `google-services.json` into `nextgen-rakshak-mobile/app/`, then either
@@ -128,6 +145,17 @@ cd nextgen-rakshak-mobile
 Never commit: `.env*`, `google-services.json`, `local.properties`, keystores, or
 service-account JSON. All are gitignored — verify with `git status` before your
 first push.
+
+**Authorisation model.** Authentication and authorisation are separate:
+
+| Principal | How they sign in | What they may write |
+|-----------|------------------|---------------------|
+| Officer (kiosk) | Google + `allowedOfficers` entry → `police` claim | Create/resolve alerts; update match status |
+| Volunteer (app) | Google (anonymous is a demo fallback) | Their own `volunteers/{uid}` doc; create matches |
+| Anyone signed in | — | Nothing else; no client may delete anything |
+
+Firestore rules enforce this server-side on the `police` custom claim, so the
+kiosk UI check is a convenience, not the boundary.
 
 ## Team
 

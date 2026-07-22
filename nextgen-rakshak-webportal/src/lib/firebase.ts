@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
+import { getFunctions, type Functions } from "firebase/functions";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -19,5 +20,7 @@ const app: FirebaseApp = getApps().length ? getApp() : initializeApp(firebaseCon
 export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
 export const auth: Auth = getAuth(app);
+// Must match setGlobalOptions({ region }) in functions/src/index.ts.
+export const functions: Functions = getFunctions(app, "us-central1");
 export const googleProvider = new GoogleAuthProvider();
 export default app;

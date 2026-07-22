@@ -65,7 +65,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1")
 
     // Local prefs (volunteer identity)
-    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
 
     // Fused location (match GPS)
     implementation("com.google.android.gms:play-services-location:21.3.0")
@@ -82,16 +82,18 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // CameraX
-    implementation("androidx.camera:camera-camera2:1.3.4")
-    implementation("androidx.camera:camera-lifecycle:1.3.4")
-    implementation("androidx.camera:camera-view:1.3.4")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
 
     // ML Kit face detection
     implementation("com.google.mlkit:face-detection:16.1.7")
 
-    // TensorFlow Lite (MobileFaceNet embeddings)
-    implementation("org.tensorflow:tensorflow-lite:2.16.1")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    // TensorFlow Lite (MobileFaceNet embeddings).
+    // tensorflow-lite-support is deliberately absent: nothing in the app used it,
+    // and it drags in the old tensorflow-lite-api, which collides with the LiteRT
+    // API that TFLite 2.17 depends on (duplicate org.tensorflow.lite.* classes).
+    implementation("org.tensorflow:tensorflow-lite:2.17.0")
 
     // Firebase (Firestore + Cloud Messaging)
     implementation(platform("com.google.firebase:firebase-bom:33.1.2"))

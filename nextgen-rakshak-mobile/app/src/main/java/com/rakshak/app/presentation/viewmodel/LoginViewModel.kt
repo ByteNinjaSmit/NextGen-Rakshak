@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -35,6 +36,18 @@ class LoginViewModel(
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    init {
+        // The local profile can outlive the Firebase session — the session is
+        // revoked, cleared, or never re-established after a reinstall. The app
+        // would then go straight to Home and every Firestore read would be denied.
+        // Drop the stale profile so the volunteer is asked to sign in again.
+        viewModelScope.launch {
+            if (store.volunteer.first() != null && authService.currentUid == null) {
+                store.clear()
+            }
+        }
+    }
 
     /**
      * Preferred sign-in: a real Google account, so a reported sighting is

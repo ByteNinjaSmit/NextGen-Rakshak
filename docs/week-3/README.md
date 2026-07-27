@@ -48,10 +48,38 @@ real time), **Objective 7** (privacy and trust by design) and **Objective 8**
 
 ---
 
+## Work split
+
+| # | Member | Roll No. | Track | Document |
+|---|--------|----------|-------|----------|
+| 1 | Bankar Smitraj Dinkar | 09 | Model weights, conversion pipeline, on-device recognition, build infrastructure | [01-bankar-smitraj-model-and-build.md](01-bankar-smitraj-model-and-build.md) |
+| 2 | Bhakare Tanishka Sharad | 11 | Cloud backend, server-side embedding, FCM geofence, offline mesh | [02-bhakare-tanishka-cloud-backend-and-mesh.md](02-bhakare-tanishka-cloud-backend-and-mesh.md) |
+| 3 | Dhadge Vedant Sanjay | 34 | Authentication, authorisation, data lifecycle, model parity verification | [03-dhadge-vedant-auth-and-data-lifecycle.md](03-dhadge-vedant-auth-and-data-lifecycle.md) |
+| 4 | Narkhede Atharva Anantkumar | 94 | Volunteer app UI completion, recognition accuracy measurement | [04-narkhede-atharva-ui-completion.md](04-narkhede-atharva-ui-completion.md) |
+
+The face-recognition pipeline was the week's blocking dependency and was large
+enough to be split across all four tracks rather than owned by one:
+
+| Pipeline stage | Owner | Output |
+|---|---|---|
+| Weight sourcing, freeze + convert scripts, quantisation | Bankar Smitraj (09) | 1.5 MB `.tflite` + SavedModel from one source |
+| Server-side SavedModel integration in the Cloud Function | Bhakare Tanishka (11) | `onAlertCreated` computes the embedding on the same graph |
+| Parity verification of the quantized model | Dhadge Vedant (34) | cosine **0.99967** against the source graph |
+| 36-pair accuracy study and the threshold measurement | Narkhede Atharva (94) | separation gap **0.3591**; threshold 0.75 → **0.55** |
+
+Production and verification sit with different members on purpose: the person who
+converts a model is the worst-placed person to certify that the conversion was
+lossless.
+
+---
+
 ## 1. Face recognition model — the blocking dependency
 
 Until this week the system could not recognise anyone: the code was complete but
 no model weights existed, so no embedding had ever been computed.
+
+*Sourcing and conversion: Bankar Smitraj (09). Parity verification: Dhadge Vedant
+(34). Server integration: Bhakare Tanishka (11).*
 
 ### 1.1 Source
 
@@ -102,9 +130,13 @@ python scripts/verify_parity.py        --saved-model ./mobilefacenet_savedmodel
 Dynamic-range quantisation shrinks the model from 5.9 MB to **1.5 MB** for the
 phone. `verify_parity.py` then runs one input through both the quantized
 `.tflite` and the source SavedModel and asserts they agree — measured
-**cosine 0.99967**, confirming quantisation did not damage the embedding.
+**cosine 0.99967**, confirming quantisation did not damage the embedding. That
+check was written and run by Track 3, independently of the track that produced
+the artefacts.
 
 ### 1.3 Architecture change — server loads the SavedModel directly
+
+*Owner: Bhakare Tanishka (11) — Track 2.*
 
 The Week 2 design had the Cloud Function load a TensorFlow.js `GraphModel`
 converted from the same weights. We changed this: `tfjs-node` can load a
@@ -120,6 +152,8 @@ team's machines.
 ---
 
 ## 2. Measured accuracy — validating the design assumptions
+
+*Owner: Narkhede Atharva (94) — Track 4. Threshold adopted in code by Track 1.*
 
 Rather than restate the synopsis figures, we measured them. Nine photographs of
 four people were run through the **actual quantized `.tflite`**, using the app's

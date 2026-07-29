@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { signInWithGoogle } from "@/lib/auth";
+import { SignInCancelledError, signInWithGoogle } from "@/lib/auth";
 
 function GoogleIcon() {
   return (
@@ -39,13 +39,16 @@ export function LoginScreen() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed.");
+      // A closed/blocked popup isn't a failure worth surfacing — just let them retry.
+      if (!(err instanceof SignInCancelledError)) {
+        setError(err instanceof Error ? err.message : "Sign-in failed.");
+      }
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+    <div className="flex min-h-screen animate-in fade-in items-center justify-center bg-muted/30 p-6 duration-300">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
           <ShieldAlert className="mb-2 h-10 w-10 text-primary" />

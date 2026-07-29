@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, MapPin, ShieldAlert, LogOut } from "lucide-react";
+import { LayoutDashboard, PlusCircle, MapPin, ShieldAlert, LogOut, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { signOutUser } from "@/lib/auth";
@@ -17,6 +18,16 @@ const links = [
 export function SidebarNav() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function onSignOut() {
+    setSigningOut(true);
+    try {
+      await signOutUser();
+    } catch {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
@@ -57,9 +68,10 @@ export function SidebarNav() {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-muted-foreground"
-          onClick={() => signOutUser()}
+          disabled={signingOut}
+          onClick={onSignOut}
         >
-          <LogOut className="h-4 w-4" />
+          {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
           Sign out
         </Button>
       </div>

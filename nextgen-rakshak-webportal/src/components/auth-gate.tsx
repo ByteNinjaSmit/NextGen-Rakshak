@@ -25,7 +25,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (!user || !isOfficer) return <LoginScreen />;
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen animate-in fade-in overflow-hidden duration-300">
       <SidebarNav />
       <main className="flex-1 overflow-y-auto bg-muted/30 p-8">{children}</main>
     </div>

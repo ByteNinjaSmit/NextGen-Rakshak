@@ -1,21 +1,33 @@
-import { signInWithPopup, signOut, type User } from "firebase/auth";
+import { AuthErrorCodes, signInWithPopup, signOut, type User } from "firebase/auth";
+import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
 import { auth, functions, googleProvider } from "@/lib/firebase";
 
-/** Thrown when a real Google account signs in but isn't an authorised officer. */
+/** Thrown when the popup is closed/blocked before completing sign-in — not a real error. */
+export class SignInCancelledError extends Error {}
+
+/** Thrown when a signed-in account fails to get the police claim. */
 export class NotAuthorisedError extends Error {}
 
 /**
- * Sign an officer in with Google and confirm they are authorised for the kiosk.
- *
- * Signing in proves who someone is, not that they may file missing-child
- * alerts — any Google account can authenticate. `claimOfficerRole` checks the
- * account against the server-side allow-list and grants the `police` custom
- * claim that firestore.rules requires for alert writes. An unauthorised account
- * is signed straight back out, so the kiosk never renders for them.
+ * Sign an officer in with Google, then grant the `police` custom claim that
+ * firestore.rules requires for alert writes (self-service: `claimOfficerRole`
+ * grants it to any authenticated account, no approval step).
  */
 export async function signInWithGoogle(): Promise<User> {
-  const result = await signInWithPopup(auth, googleProvider);
+  let result;
+  try {
+    result = await signInWithPopup(auth, googleProvider);
+  } catch (err) {
+    if (
+      err instanceof FirebaseError &&
+      (err.code === AuthErrorCodes.POPUP_CLOSED_BY_USER || err.code === AuthErrorCodes.POPUP_BLOCKED)
+    ) {
+      throw new SignInCancelledError("Sign-in was cancelled.");
+    }
+    throw err;
+  }
+
   try {
     await httpsCallable(functions, "claimOfficerRole")();
     // Force a token refresh so the new claim is present on this session.

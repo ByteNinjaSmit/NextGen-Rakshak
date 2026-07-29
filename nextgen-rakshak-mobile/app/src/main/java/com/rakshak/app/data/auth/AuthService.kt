@@ -38,6 +38,14 @@ interface AuthService {
     /** Create a new email/password account and sign in with it. */
     suspend fun registerWithEmail(email: String, password: String): SignedInUser
 
+    /**
+     * True when the signed-in account carries the web kiosk's `police` custom
+     * claim. Police and volunteer are mutually exclusive — both apps share one
+     * Firebase Auth pool, so an officer's account must not register as a
+     * volunteer device (firestore.rules denies the write regardless).
+     */
+    suspend fun hasPoliceClaim(): Boolean
+
     /** Sign out of Firebase. */
     suspend fun signOut()
 }
@@ -76,6 +84,14 @@ class FirebaseAuthService(
         runAuth("Could not create the account") {
             auth.createUserWithEmailAndPassword(email, password).await().user
         }
+
+    override suspend fun hasPoliceClaim(): Boolean {
+        val user = auth.currentUser ?: return false
+        // forceRefresh: a claim granted or revoked on the kiosk minutes ago is
+        // not on the cached token yet.
+        val token = user.getIdToken(true).await()
+        return token.claims["role"] == "police"
+    }
 
     override suspend fun signOut() {
         auth.signOut()

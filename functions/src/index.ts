@@ -104,6 +104,27 @@ async function purgeAlertData(
   if (Array.isArray(data.embedding) && data.embedding.length > 0) updates.embedding = [];
   if (imageUrl) updates.imageUrl = "";
   if (Object.keys(updates).length > 0) await ref.update(updates);
+
+  // Each match carries its own copy of the photo URL. Left alone it outlives the
+  // deleted object and renders as a broken image in the kiosk forever, so the
+  // denormalised copies are cleared alongside the original.
+  if (imageUrl) await clearMatchImages(alertId);
+}
+
+/** Blank the copied `imageUrl` on every match reported against this alert. */
+async function clearMatchImages(alertId: string): Promise<void> {
+  const db = getFirestore();
+  const matches = await db.collection("matches").where("alertId", "==", alertId).get();
+  if (matches.empty) return;
+
+  // Chunked: a batch caps at 500 writes, and a popular alert can exceed that.
+  const docs = matches.docs;
+  for (let i = 0; i < docs.length; i += 500) {
+    const batch = db.batch();
+    docs.slice(i, i + 500).forEach((doc) => batch.update(doc.ref, { imageUrl: "" }));
+    await batch.commit();
+  }
+  logger.info("Cleared match photo URLs", { alertId, count: docs.length });
 }
 
 /**

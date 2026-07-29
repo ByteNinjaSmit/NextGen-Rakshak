@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertForm } from "@/components/alert-form";
+
+export const metadata: Metadata = { title: "New Alert" };
 
 export default function NewAlertPage() {
   return (

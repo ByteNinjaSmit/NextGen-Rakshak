@@ -7,13 +7,15 @@ import {
   query,
   where,
   orderBy,
+  limit,
+  getCountFromServer,
   serverTimestamp,
   GeoPoint,
   type Unsubscribe,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
-import type { Alert, AlertInput, Match } from "@/types";
+import type { Alert, AlertAuthor, AlertInput, Match } from "@/types";
 
 const alertsRef = collection(db, "alerts");
 const matchesRef = collection(db, "matches");
@@ -31,10 +33,14 @@ export async function uploadChildPhoto(file: File): Promise<string> {
  * that triggers on document creation, so we write an empty placeholder here.
  * When the kiosk's location is available it is stored as `geoLocation` so the
  * Cloud Function can geofence the push to nearby volunteers (FR-03).
+ *
+ * `author.uid` must be the caller's own uid — firestore.rules rejects the write
+ * otherwise, so an alert always traces back to a real officer account.
  */
 export async function createAlert(
   input: AlertInput,
   photo: File,
+  author: AlertAuthor,
   origin?: { lat: number; lng: number },
 ): Promise<string> {
   const imageUrl = await uploadChildPhoto(photo);
@@ -43,6 +49,7 @@ export async function createAlert(
     imageUrl,
     embedding: [],
     status: "active",
+    createdBy: author,
     timestamp: serverTimestamp(),
     ...(origin ? { geoLocation: new GeoPoint(origin.lat, origin.lng) } : {}),
   });
@@ -67,10 +74,32 @@ export function subscribeActiveAlerts(cb: (alerts: Alert[]) => void): Unsubscrib
   });
 }
 
-/** Subscribe to incoming matches, newest first. */
+/**
+ * Newest N matches the kiosk keeps live. Sightings are only actionable while
+ * the case is open, so the dashboard streams a recent window rather than the
+ * whole history — which otherwise grows without bound across every event.
+ */
+const MATCH_FEED_LIMIT = 100;
+
+/** Subscribe to the most recent incoming matches, newest first. */
 export function subscribeMatches(cb: (matches: Match[]) => void): Unsubscribe {
-  const q = query(matchesRef, orderBy("timestamp", "desc"));
+  const q = query(matchesRef, orderBy("timestamp", "desc"), limit(MATCH_FEED_LIMIT));
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Match));
   });
+}
+
+/**
+ * True totals for the dashboard tiles.
+ *
+ * Counting the live feed would silently cap at MATCH_FEED_LIMIT and report a
+ * frozen number as fact, so the counts come from server-side aggregations —
+ * one read each, no documents transferred.
+ */
+export async function fetchMatchCounts(): Promise<{ total: number; pending: number }> {
+  const [total, pending] = await Promise.all([
+    getCountFromServer(matchesRef),
+    getCountFromServer(query(matchesRef, where("status", "==", "pending"))),
+  ]);
+  return { total: total.data().count, pending: pending.data().count };
 }

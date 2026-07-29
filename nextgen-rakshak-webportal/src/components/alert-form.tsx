@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAuth } from "@/components/auth-provider";
 import { createAlert } from "@/lib/firestore";
 import type { AlertInput } from "@/types";
 
@@ -29,6 +30,7 @@ const empty: AlertInput = {
 
 export function AlertForm() {
   const router = useRouter();
+  const { user, officer } = useAuth();
   const [form, setForm] = useState<AlertInput>(empty);
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -69,10 +71,21 @@ export function AlertForm() {
       setError("A clear photo of the child is required.");
       return;
     }
+    if (!user) {
+      setError("Your session expired. Sign in again to file this alert.");
+      return;
+    }
     setSubmitting(true);
     try {
       const origin = await kioskLocation();
-      await createAlert(form, photo, origin);
+      // The officer record may still be loading; the uid is what the rules
+      // check, the rest is display-only.
+      const author = {
+        uid: user.uid,
+        name: officer?.displayName ?? user.displayName ?? user.email ?? "Officer",
+        station: officer?.station ?? "",
+      };
+      await createAlert(form, photo, author, origin);
       router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create alert.");

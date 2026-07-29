@@ -10,10 +10,28 @@ export class SignInCancelledError extends Error {}
 export class NotAuthorisedError extends Error {}
 
 /**
- * Sign an officer in with Google, then grant the `police` custom claim that
- * firestore.rules requires for alert writes (self-service: `claimOfficerRole`
- * grants it to any authenticated account, no approval step).
+ * Grant the signed-in account the `police` custom claim that firestore.rules
+ * requires for alert writes, and create/refresh its `officers/{uid}` record
+ * (self-service: `claimOfficerRole` grants it to any authenticated account, no
+ * approval step).
+ *
+ * The forced token refresh puts the new claim on this session and fires
+ * onIdTokenChanged, which is what re-renders the app as authorised.
  */
+export async function ensureOfficerRole(user: User): Promise<void> {
+  try {
+    await httpsCallable(functions, "claimOfficerRole")();
+    await user.getIdToken(true);
+  } catch (err) {
+    throw new NotAuthorisedError(
+      err instanceof Error && err.message
+        ? err.message
+        : "This account is not authorised for the police kiosk."
+    );
+  }
+}
+
+/** Sign an officer in with Google, then register them as police. */
 export async function signInWithGoogle(): Promise<User> {
   let result;
   try {
@@ -29,16 +47,12 @@ export async function signInWithGoogle(): Promise<User> {
   }
 
   try {
-    await httpsCallable(functions, "claimOfficerRole")();
-    // Force a token refresh so the new claim is present on this session.
-    await result.user.getIdToken(true);
+    await ensureOfficerRole(result.user);
   } catch (err) {
+    // Never leave a half-registered session behind: without the claim every
+    // Firestore write would fail anyway.
     await signOut(auth);
-    throw new NotAuthorisedError(
-      err instanceof Error && err.message
-        ? err.message
-        : "This account is not authorised for the police kiosk."
-    );
+    throw err;
   }
   return result.user;
 }

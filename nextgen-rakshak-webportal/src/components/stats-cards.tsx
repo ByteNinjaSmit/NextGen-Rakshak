@@ -2,18 +2,18 @@
 
 import { Users, Bell, MapPin } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useActiveAlerts, useMatches } from "@/hooks/use-alerts";
+import { useActiveAlerts, useMatchCounts } from "@/hooks/use-alerts";
 
 export function StatsCards() {
   const { alerts } = useActiveAlerts();
-  const { matches } = useMatches();
-
-  const pending = matches.filter((m) => m.status === "pending").length;
+  // Server-side aggregates, not the length of the capped live feed. Null until
+  // the first read resolves — shown as a dash rather than a misleading zero.
+  const counts = useMatchCounts();
 
   const stats = [
     { label: "Active Alerts", value: alerts.length, icon: Bell },
-    { label: "Total Matches", value: matches.length, icon: MapPin },
-    { label: "Awaiting Dispatch", value: pending, icon: Users },
+    { label: "Total Matches", value: counts?.total ?? "—", icon: MapPin },
+    { label: "Awaiting Dispatch", value: counts?.pending ?? "—", icon: Users },
   ];
 
   return (

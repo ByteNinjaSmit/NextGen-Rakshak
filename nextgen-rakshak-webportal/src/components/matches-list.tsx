@@ -1,7 +1,8 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element */
-import { Navigation } from "lucide-react";
+import { useState } from "react";
+import { ImageOff, Navigation, RotateCw } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -25,6 +26,23 @@ function mapsUrl(match: Match) {
 
 export function MatchesList() {
   const { matches, loading } = useMatches();
+  const [failed, setFailed] = useState<string[]>([]);
+
+  /**
+   * Mark the match dispatched. Deliberately not awaited by the click handler:
+   * the anchor must navigate to Maps within the user gesture, so the write runs
+   * alongside it and a failure is surfaced in the row instead of being swallowed.
+   * Skips the write when the match is already dispatched.
+   */
+  async function markDispatched(match: Match) {
+    if (match.status === "dispatched") return;
+    setFailed((prev) => prev.filter((id) => id !== match.id));
+    try {
+      await dispatchMatch(match.id);
+    } catch {
+      setFailed((prev) => [...prev, match.id]);
+    }
+  }
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading matches…</p>;
   if (matches.length === 0)
@@ -55,11 +73,21 @@ export function MatchesList() {
               <TableRow key={match.id}>
                 <TableCell>
                   <div className="flex items-center gap-3">
-                    <img
-                      src={match.imageUrl}
-                      alt={match.childName}
-                      className="h-10 w-10 rounded-md object-cover"
-                    />
+                    {match.imageUrl ? (
+                      <img
+                        src={match.imageUrl}
+                        alt={match.childName}
+                        className="h-10 w-10 rounded-md object-cover"
+                      />
+                    ) : (
+                      // Photo purged when the case was resolved.
+                      <div
+                        className="flex h-10 w-10 items-center justify-center rounded-md bg-muted"
+                        title="Photo deleted — case resolved"
+                      >
+                        <ImageOff className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    )}
                     <span className="font-medium">{match.childName}</span>
                   </div>
                 </TableCell>
@@ -72,16 +100,24 @@ export function MatchesList() {
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button
-                    size="sm"
-                    asChild
-                    onClick={() => dispatchMatch(match.id)}
-                  >
-                    <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
-                      <Navigation className="h-4 w-4" />
-                      Dispatch
-                    </a>
-                  </Button>
+                  <div className="flex flex-col items-end gap-1">
+                    <Button size="sm" asChild onClick={() => markDispatched(match)}>
+                      <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
+                        <Navigation className="h-4 w-4" />
+                        Dispatch
+                      </a>
+                    </Button>
+                    {failed.includes(match.id) && (
+                      <button
+                        type="button"
+                        onClick={() => markDispatched(match)}
+                        className="flex items-center gap-1 text-xs text-destructive hover:underline"
+                      >
+                        <RotateCw className="h-3 w-3" />
+                        Not marked dispatched — retry
+                      </button>
+                    )}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

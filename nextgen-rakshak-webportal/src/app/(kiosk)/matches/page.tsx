@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { MatchesList } from "@/components/matches-list";
+
+export const metadata: Metadata = { title: "Live Matches" };
 
 export default function MatchesPage() {
   return (

@@ -23,7 +23,11 @@ service cloud.firestore {
     // signed-in device so volunteers can match against them.
     match /alerts/{alertId} {
       allow read: if signedIn();
-      allow create, update: if isPolice();
+      // An alert must name the officer who filed it, and that officer must be
+      // the caller — attribution cannot be forged onto another account.
+      allow create: if isPolice()
+                    && request.resource.data.createdBy.uid == request.auth.uid;
+      allow update: if isPolice();
       allow delete: if false;
     }
 
@@ -38,15 +42,37 @@ service cloud.firestore {
     }
 
     // Volunteer profiles: a user may only write their own document.
+    // A police account may not also register as a volunteer device — the mirror
+    // of the volunteer check inside claimOfficerRole. One account, one role.
     match /volunteers/{uid} {
       allow read: if signedIn();
-      allow write: if signedIn() && request.auth.uid == uid;
+      allow write: if signedIn()
+                   && request.auth.uid == uid
+                   && !isPolice();
     }
 
-    // Officer allow-list. No client access at all — it is read only by the
-    // Admin SDK inside claimOfficerRole, so a signed-in user can neither
-    // enumerate authorised officers nor add themselves. Manage it from the
-    // Firebase console.
+    // Officer directory. Created and kept current by claimOfficerRole with the
+    // Admin SDK, which bypasses these rules; the kiosk only reads it and edits
+    // its own contact fields.
+    match /officers/{uid} {
+      // Officers can see each other (for attribution on alerts/dispatch), but
+      // volunteers cannot enumerate police accounts.
+      allow read: if isPolice();
+
+      // An officer may edit only their own profile, and only the display fields.
+      // uid / email / role / createdAt / lastLoginAt stay server-owned, so a
+      // client cannot forge an identity or grant itself a role through the doc.
+      allow update: if isPolice()
+                    && request.auth.uid == uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['displayName', 'phone', 'station', 'badgeNumber', 'updatedAt']);
+
+      // Records are created by the Cloud Function on sign-in, never by a client.
+      allow create, delete: if false;
+    }
+
+    // Legacy officer allow-list. claimOfficerRole no longer reads it (officers
+    // self-register), so nothing may touch it from a client.
     match /allowedOfficers/{email} {
       allow read, write: if false;
     }

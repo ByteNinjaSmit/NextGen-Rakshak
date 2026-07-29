@@ -1,13 +1,18 @@
 rules_version = '2';
 
-// Child photos live under alert_images/. Any authenticated user may read
-// (volunteers need the photo for side-by-side match confirmation); only
-// authenticated users may upload.
+// Child photos live under alert_images/.
+//   - Read: any authenticated user. Volunteers need the photo for the
+//     side-by-side match confirmation, and the mobile app signs in anonymously
+//     in the demo fallback.
+//   - Write: officers only. Uploading is part of filing an alert, which is a
+//     kiosk action; without the role check any signed-in device (including an
+//     anonymous one) could fill the bucket with arbitrary images.
 service firebase.storage {
   match /b/{bucket}/o {
     match /alert_images/{imageId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
+                   && request.auth.token.role == 'police'
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }

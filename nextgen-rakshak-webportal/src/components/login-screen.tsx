@@ -4,7 +4,8 @@ import { useState } from "react";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { SignInCancelledError, signInWithGoogle } from "@/lib/auth";
+import { useAuth } from "@/components/auth-provider";
+import { SignInCancelledError, ensureOfficerRole, signInWithGoogle, signOutUser } from "@/lib/auth";
 
 function GoogleIcon() {
   return (
@@ -30,14 +31,21 @@ function GoogleIcon() {
 }
 
 export function LoginScreen() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // A session can survive with no `police` claim (the claim call failed, or the
+  // account signed in through another Rakshak app). Retry the grant instead of
+  // asking for the Google popup again.
+  const needsRetry = !!user;
 
   async function onSignIn() {
     setError(null);
     setLoading(true);
     try {
-      await signInWithGoogle();
+      if (user) await ensureOfficerRole(user);
+      else await signInWithGoogle();
     } catch (err) {
       // A closed/blocked popup isn't a failure worth surfacing — just let them retry.
       if (!(err instanceof SignInCancelledError)) {
@@ -54,14 +62,27 @@ export function LoginScreen() {
           <ShieldAlert className="mb-2 h-10 w-10 text-primary" />
           <CardTitle className="text-xl">Rakshak Police Kiosk</CardTitle>
           <CardDescription>
-            Sign in with your authorised Google account to create alerts and track matches.
+            {needsRetry
+              ? `Signed in as ${user?.email ?? "this account"}, but it is not registered as a police account yet.`
+              : "Sign in with your authorised Google account to create alerts and track matches."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <Button onClick={onSignIn} disabled={loading} className="w-full" variant="outline">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleIcon />}
-            Continue with Google
+            {needsRetry ? "Register this account" : "Continue with Google"}
           </Button>
+          {needsRetry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              disabled={loading}
+              onClick={() => signOutUser()}
+            >
+              Use a different account
+            </Button>
+          )}
           {error && <p className="text-center text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>

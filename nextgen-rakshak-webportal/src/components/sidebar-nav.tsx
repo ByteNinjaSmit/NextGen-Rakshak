@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, PlusCircle, MapPin, ShieldAlert, LogOut, Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  LayoutDashboard,
+  PlusCircle,
+  MapPin,
+  ShieldAlert,
+  LogOut,
+  Loader2,
+  UserCog,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { signOutUser } from "@/lib/auth";
@@ -13,17 +22,22 @@ const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/alerts/new", label: "New Alert", icon: PlusCircle },
   { href: "/matches", label: "Live Matches", icon: MapPin },
+  { href: "/profile", label: "Officer Profile", icon: UserCog },
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const { user } = useAuth();
+  const router = useRouter();
+  const { user, officer } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
   async function onSignOut() {
     setSigningOut(true);
     try {
       await signOutUser();
+      // Go straight to /login rather than waiting for the layout guard, so the
+      // kiosk never shows a half-torn-down dashboard between the two.
+      router.replace("/login");
     } catch {
       setSigningOut(false);
     }
@@ -60,8 +74,13 @@ export function SidebarNav() {
       </nav>
       <div className="space-y-2 border-t p-4">
         {user && (
-          <div className="truncate text-xs text-muted-foreground" title={user.email ?? ""}>
-            {user.displayName ?? user.email}
+          <div className="space-y-0.5" title={user.email ?? ""}>
+            <p className="truncate text-xs font-medium">
+              {officer?.displayName ?? user.displayName ?? user.email}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {officer?.station || officer?.badgeNumber || user.email}
+            </p>
           </div>
         )}
         <Button

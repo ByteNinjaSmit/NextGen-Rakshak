@@ -3,6 +3,7 @@ package com.rakshak.app.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rakshak.app.data.auth.AuthFailure
 import com.rakshak.app.data.auth.AuthService
 import com.rakshak.app.data.auth.GoogleSignInClient
 import com.rakshak.app.data.local.VolunteerStore
@@ -71,6 +72,7 @@ class LoginViewModel(
                     name = user.displayName.orEmpty(),
                     email = user.email.orEmpty(),
                 )
+                rejectIfOfficer()
                 store.save(volunteer)
                 volunteers.register(volunteer) // best-effort FCM registration
             }.onFailure { _error.value = it.message ?: "Google sign-in failed" }
@@ -98,6 +100,7 @@ class LoginViewModel(
                     name = user.displayName.orEmpty(),
                     email = user.email.orEmpty(),
                 )
+                rejectIfOfficer()
                 store.save(volunteer)
                 volunteers.register(volunteer) // best-effort FCM registration
             }.onFailure { _error.value = it.message ?: "Sign-in failed" }
@@ -114,6 +117,7 @@ class LoginViewModel(
             runCatching {
                 val uid = authService.ensureSignedIn()
                 val volunteer = Volunteer(id = uid, phone = phone, role = role)
+                rejectIfOfficer()
                 store.save(volunteer)
                 volunteers.register(volunteer) // best-effort FCM registration
             }.onFailure { _error.value = it.message ?: "Sign-in failed" }
@@ -128,5 +132,22 @@ class LoginViewModel(
                 store.clear()
             }.onFailure { _error.value = it.message ?: "Sign-out failed" }
         }
+    }
+
+    /**
+     * Stop a police kiosk account from also registering as a volunteer device.
+     * Both apps share one Firebase Auth pool, and firestore.rules denies the
+     * `volunteers/{uid}` write for a `police` account — catching it here means a
+     * readable message instead of a permission error, and no local profile left
+     * behind for a session that cannot report a sighting.
+     */
+    private suspend fun rejectIfOfficer() {
+        if (!authService.hasPoliceClaim()) return
+        authService.signOut()
+        store.clear()
+        throw AuthFailure(
+            "This account is registered on the police kiosk. " +
+                "Volunteers must sign in with a different account.",
+        )
     }
 }

@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { StatsCards } from "@/components/stats-cards";
 import { ActiveAlertsList } from "@/components/active-alerts-list";
+
+export const metadata: Metadata = { title: "Dashboard" };
 
 export default function DashboardPage() {
   return (

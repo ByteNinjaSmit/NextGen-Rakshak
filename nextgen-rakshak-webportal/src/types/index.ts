@@ -72,6 +72,13 @@ export interface Match {
   imageUrl: string;
   volunteerId: string;
   volunteerRole: string;
+  /**
+   * Set when the sighting reached Firestore over the offline mesh, carried by a
+   * different device than the one that made it. Present means `volunteerId` was
+   * asserted by a relaying peer rather than proven by the reporter's own
+   * session — worth showing, not worth hiding.
+   */
+  relayedBy?: string;
   location: GeoPoint;
   confidence: number;
   status: MatchStatus;

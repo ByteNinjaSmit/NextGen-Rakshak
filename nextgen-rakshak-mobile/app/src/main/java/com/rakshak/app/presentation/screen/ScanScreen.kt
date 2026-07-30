@@ -68,6 +68,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val pending by viewModel.pending.collectAsStateWithLifecycle()
     val reported by viewModel.reported.collectAsStateWithLifecycle()
     val scanningFor by viewModel.scanningFor.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
 
     LaunchedEffect(reported) {
         if (reported) onReported()
@@ -169,9 +170,22 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                         Text("${match.alert.age} yrs · ${match.alert.gender}")
                         Text(match.alert.clothingDesc)
                         Text("Is this the child? Confirm to alert police with your location.")
+                        // A failed report leaves the dialog open; say so rather than
+                        // letting the volunteer believe police have been notified.
+                        error?.let {
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.error,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
                     }
                 },
-                confirmButton = { TextButton(onClick = viewModel::confirm) { Text("Confirm") } },
+                confirmButton = {
+                    TextButton(onClick = viewModel::confirm) {
+                        Text(if (error != null) "Try again" else "Confirm")
+                    }
+                },
                 dismissButton = { TextButton(onClick = viewModel::dismiss) { Text("Not a match") } },
             )
         }

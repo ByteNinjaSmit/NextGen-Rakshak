@@ -20,9 +20,22 @@ import type { Alert, AlertAuthor, AlertInput, Match } from "@/types";
 const alertsRef = collection(db, "alerts");
 const matchesRef = collection(db, "matches");
 
+/**
+ * Reduce a browser-supplied filename to one safe Storage path segment.
+ *
+ * storage.rules matches `alert_images/{imageId}`, which is a *single* segment,
+ * so a name containing a slash silently lands outside the rule and the upload
+ * is rejected as unauthorised — an officer filing an alert would see a
+ * permission error with no hint that their filename caused it.
+ */
+function safeFileName(name: string): string {
+  const cleaned = name.replace(/[^A-Za-z0-9._-]/g, "_").slice(-64);
+  return cleaned.replace(/^\.+/, "") || "photo.jpg";
+}
+
 /** Upload the child photo to Firebase Storage and return its download URL. */
 export async function uploadChildPhoto(file: File): Promise<string> {
-  const path = `alert_images/${Date.now()}_${file.name}`;
+  const path = `alert_images/${Date.now()}_${safeFileName(file.name)}`;
   const snapshot = await uploadBytes(ref(storage, path), file);
   return getDownloadURL(snapshot.ref);
 }

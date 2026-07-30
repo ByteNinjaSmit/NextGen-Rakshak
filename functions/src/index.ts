@@ -20,10 +20,39 @@ const ALERT_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 // tfjs-node needs headroom; embedding runs in ~1-3s after a warm start.
 setGlobalOptions({ region: "us-central1", memory: "1GiB", timeoutSeconds: 120 });
 
-async function fetchImage(imageUrl: string): Promise<Buffer> {
-  const res = await fetch(imageUrl);
-  if (!res.ok) throw new Error(`Image download failed: ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+/** Refuse anything larger than storage.rules already allows to be uploaded. */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Read a child's photo out of our own Storage bucket.
+ *
+ * Deliberately *not* `fetch(imageUrl)`. Fetching a caller-supplied URL from
+ * inside the Functions runtime is a server-side request forgery primitive: the
+ * runtime sits on an internal network and would happily retrieve
+ * `http://169.254.169.254/…` (the GCP metadata server, which serves service
+ * account tokens) or any other host reachable from there, and hand the result
+ * to a model that returns 128 floats — but a failure message alone is enough to
+ * probe what exists. Going through the Admin SDK means the only thing taken
+ * from the URL is an object path inside a bucket we already own, so there is no
+ * host to redirect and nothing to forge.
+ */
+async function fetchAlertImage(imageUrl: string): Promise<Buffer> {
+  const path = storagePathFromUrl(imageUrl);
+  // Alert photos live under this prefix and nowhere else; anything outside it
+  // is not an alert photo regardless of who asked for it.
+  if (!path || !path.startsWith("alert_images/")) {
+    throw new Error("imageUrl does not point at an alert photo in this project's bucket.");
+  }
+
+  const file = getStorage().bucket().file(path);
+  const [metadata] = await file.getMetadata();
+  const size = Number(metadata.size ?? 0);
+  if (size > MAX_IMAGE_BYTES) {
+    throw new Error(`Alert photo is ${size} bytes; the limit is ${MAX_IMAGE_BYTES}.`);
+  }
+
+  const [buffer] = await file.download();
+  return buffer;
 }
 
 /**
@@ -44,7 +73,7 @@ export const onAlertCreated = onDocumentCreated("alerts/{alertId}", async (event
   // Compute the face embedding (best-effort) unless one already exists.
   if (imageUrl && !(Array.isArray(existing) && existing.length > 0)) {
     try {
-      const embedding = await computeEmbedding(await fetchImage(imageUrl));
+      const embedding = await computeEmbedding(await fetchAlertImage(imageUrl));
       await snap.ref.update({ embedding });
       logger.info("Embedding written", { alertId, dims: embedding.length });
     } catch (err) {
@@ -111,20 +140,30 @@ async function purgeAlertData(
   if (imageUrl) await clearMatchImages(alertId);
 }
 
+/** A Firestore batch caps at 500 writes; anything unbounded has to be chunked. */
+const BATCH_LIMIT = 500;
+
+/** Apply the same field update to every document, in batches of [BATCH_LIMIT]. */
+async function updateAll(
+  docs: FirebaseFirestore.QueryDocumentSnapshot[],
+  update: Record<string, unknown>,
+): Promise<void> {
+  const db = getFirestore();
+  for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+    const batch = db.batch();
+    docs.slice(i, i + BATCH_LIMIT).forEach((doc) => batch.update(doc.ref, update));
+    await batch.commit();
+  }
+}
+
 /** Blank the copied `imageUrl` on every match reported against this alert. */
 async function clearMatchImages(alertId: string): Promise<void> {
   const db = getFirestore();
   const matches = await db.collection("matches").where("alertId", "==", alertId).get();
   if (matches.empty) return;
 
-  // Chunked: a batch caps at 500 writes, and a popular alert can exceed that.
-  const docs = matches.docs;
-  for (let i = 0; i < docs.length; i += 500) {
-    const batch = db.batch();
-    docs.slice(i, i + 500).forEach((doc) => batch.update(doc.ref, { imageUrl: "" }));
-    await batch.commit();
-  }
-  logger.info("Cleared match photo URLs", { alertId, count: docs.length });
+  await updateAll(matches.docs, { imageUrl: "" });
+  logger.info("Cleared match photo URLs", { alertId, count: matches.size });
 }
 
 /**
@@ -159,22 +198,32 @@ export const expireAlerts = onSchedule("every 30 minutes", async () => {
 
   if (stale.empty) return;
 
-  const batch = db.batch();
-  stale.forEach((doc) => batch.update(doc.ref, { status: "resolved" }));
-  await batch.commit();
+  // Chunked: an unswept backlog (a busy event, or the schedule having been
+  // paused) can exceed the 500-write batch limit, and a batch that overflows
+  // throws — leaving every stale alert live instead of just the excess.
+  await updateAll(stale.docs, { status: "resolved" });
   logger.info("Expired alerts", { count: stale.size });
 });
 
 /**
- * Callable fallback: compute an embedding for an image URL on demand
- * (e.g. to re-index an alert). Requires an authenticated caller.
+ * Callable fallback: recompute an alert's embedding on demand.
+ *
+ * Officers only. Re-indexing an alert is a kiosk operation, and every volunteer
+ * device — including an anonymous one — is in the same Auth pool, so
+ * "authenticated" on its own would have left this open to anybody who installed
+ * the app. It is also the one entry point where the image path comes straight
+ * from the caller, which is why [fetchAlertImage] resolves it inside our own
+ * bucket rather than fetching it.
  */
 export const computeEmbeddingCallable = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  if (request.auth.token.role !== "police") {
+    throw new HttpsError("permission-denied", "Officers only.");
+  }
   const imageUrl = request.data?.imageUrl;
   if (typeof imageUrl !== "string") {
     throw new HttpsError("invalid-argument", "imageUrl (string) is required.");
   }
-  const embedding = await computeEmbedding(await fetchImage(imageUrl));
+  const embedding = await computeEmbedding(await fetchAlertImage(imageUrl));
   return { embedding };
 });

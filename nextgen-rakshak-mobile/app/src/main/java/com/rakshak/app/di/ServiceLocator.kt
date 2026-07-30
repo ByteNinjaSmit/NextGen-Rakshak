@@ -22,7 +22,6 @@ import com.rakshak.app.domain.matching.FaceMatcher
 import com.rakshak.app.domain.usecase.ReportMatchUseCase
 import com.rakshak.app.ml.MlKitFaceDetector
 import com.rakshak.app.ml.TFLiteEmbeddingExtractor
-import com.rakshak.app.networking.ConnectivityObserver
 import com.rakshak.app.networking.FcmTokenProvider
 import com.rakshak.app.networking.mesh.MeshNetworkManager
 import com.rakshak.app.utils.LocationProvider
@@ -55,7 +54,7 @@ object ServiceLocator {
 
     fun matchRepository(context: Context): MatchRepository =
         DefaultMatchRepository(
-            source = FirestoreMatchSource(firestore),
+            source = FirestoreMatchSource(firestore, authService),
             pendingDao = AppDatabase.get(context).pendingMatchDao(),
             meshRelay = mesh(context)::relayMatch,
         )
@@ -75,9 +74,6 @@ object ServiceLocator {
             auth = authService,
             locationProvider = LocationProvider(context.applicationContext),
         )
-
-    fun connectivity(context: Context): ConnectivityObserver =
-        ConnectivityObserver(context.applicationContext)
 
     @Volatile
     private var extractorInstance: TFLiteEmbeddingExtractor? = null

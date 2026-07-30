@@ -92,7 +92,17 @@ export function MatchesList() {
                   </div>
                 </TableCell>
                 <TableCell>{Math.round(match.confidence * 100)}%</TableCell>
-                <TableCell className="capitalize">{match.volunteerRole}</TableCell>
+                <TableCell>
+                  <span className="capitalize">{match.volunteerRole}</span>
+                  {match.relayedBy && (
+                    <span
+                      className="ml-2 whitespace-nowrap text-xs text-muted-foreground"
+                      title="Carried to the server by another volunteer's phone over the offline mesh. The reporter is named by that relay rather than proven by their own session."
+                    >
+                      via mesh
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="text-muted-foreground">{timeAgo(match.timestamp)}</TableCell>
                 <TableCell>
                   <Badge variant={match.status === "dispatched" ? "success" : "secondary"}>

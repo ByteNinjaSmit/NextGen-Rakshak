@@ -11,7 +11,7 @@ import java.io.DataOutputStream
 /**
  * Serializes mesh payloads to/from bytes. Wire layout:
  *   byte[0]       = TTL / remaining hop-count (store-and-forward routing)
- *   byte[1]       = 1-byte type tag (alert vs match)
+ *   byte[1]       = 1-byte type tag (alert / match / resolve)
  *   byte[2..]     = payload fields
  *
  * TTL is decremented at each relay ([withDecrementedTtl]) and a packet is no
@@ -23,6 +23,7 @@ object MeshPayloadCodec {
 
     private const val TYPE_ALERT: Byte = 0x01
     private const val TYPE_MATCH: Byte = 0x02
+    private const val TYPE_RESOLVE: Byte = 0x03
 
     /** A decoded packet plus its remaining hop-count. */
     data class MeshEnvelope(val ttl: Int, val message: MeshMessage)
@@ -30,6 +31,15 @@ object MeshPayloadCodec {
     sealed interface MeshMessage {
         data class AlertMessage(val alert: Alert) : MeshMessage
         data class MatchMessage(val report: MatchReport) : MeshMessage
+
+        /**
+         * "This case is closed — stop scanning for it." Floods the mesh the same
+         * way an alert does, because an offline device has no other way to learn
+         * that the child was found: the alert simply disappears from the kiosk's
+         * Firestore query, and absence is not a signal that reaches a peer with
+         * no internet.
+         */
+        data class ResolveMessage(val alertId: String) : MeshMessage
     }
 
     fun encode(alert: Alert, ttl: Int = Constants.MESH_INITIAL_TTL): ByteArray = build { out ->
@@ -41,9 +51,21 @@ object MeshPayloadCodec {
         out.writeInt(alert.age)
         out.writeUTF(alert.gender)
         out.writeUTF(alert.clothingDesc)
+        // Where the child was last seen: the one field that tells an offline
+        // volunteer which way to walk. parentContact is deliberately left out —
+        // mesh packets are unauthenticated and reach any nearby device, and a
+        // parent's phone number is not something to flood across a festival.
+        out.writeUTF(alert.lastSeen)
         out.writeInt(alert.embedding.size)
         alert.embedding.forEach(out::writeFloat)
         out.writeLong(alert.timestamp)
+    }
+
+    /** Encode a "case closed" packet for [alertId]. */
+    fun encodeResolve(alertId: String, ttl: Int = Constants.MESH_INITIAL_TTL): ByteArray = build { out ->
+        out.writeByte(ttl)
+        out.writeByte(TYPE_RESOLVE.toInt())
+        out.writeUTF(alertId)
     }
 
     fun encode(report: MatchReport, ttl: Int = Constants.MESH_INITIAL_TTL): ByteArray = build { out ->
@@ -71,6 +93,7 @@ object MeshPayloadCodec {
                         age = input.readInt(),
                         gender = input.readUTF(),
                         clothingDesc = input.readUTF(),
+                        lastSeen = input.readUTF(),
                         embedding = FloatArray(input.readInt()) { input.readFloat() },
                         timestamp = input.readLong(),
                     )
@@ -87,6 +110,7 @@ object MeshPayloadCodec {
                         longitude = input.readDouble(),
                     )
                 )
+                TYPE_RESOLVE -> MeshMessage.ResolveMessage(input.readUTF())
                 else -> return@use null
             }
             MeshEnvelope(ttl, message)

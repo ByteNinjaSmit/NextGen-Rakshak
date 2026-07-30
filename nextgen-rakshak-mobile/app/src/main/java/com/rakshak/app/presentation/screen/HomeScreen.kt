@@ -84,6 +84,14 @@ private fun AlertRow(alert: Alert) {
             }
             Text("${alert.age} yrs · ${alert.gender}")
             Text(alert.clothingDesc)
+            // Where to start looking. Blank on older alerts and on mesh packets
+            // sent by a build that predates carrying this field.
+            if (alert.lastSeen.isNotBlank()) {
+                Text(
+                    text = "Last seen: ${alert.lastSeen}",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
     }
 }

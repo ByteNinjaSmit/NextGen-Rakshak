@@ -24,9 +24,15 @@
 
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
+    <!--
+      allowBackup=false: the Room queue holds unsent sightings (a child's name, a
+      confidence score and a GPS fix) and DataStore holds the volunteer's
+      identity. Auto-backup would copy both off the device to Google Drive, which
+      contradicts the on-device guarantee the project is built on.
+    -->
     <application
         android:name=".RakshakApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"

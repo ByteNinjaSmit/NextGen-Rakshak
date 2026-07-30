@@ -5,6 +5,7 @@ import com.rakshak.app.data.model.MatchReport
 import com.rakshak.app.networking.mesh.MeshPayloadCodec.MeshMessage
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -20,6 +21,8 @@ class MeshPayloadCodecTest {
             gender = "Female",
             clothingDesc = "red frock",
             imageUrl = "https://x/y.jpg",
+            lastSeen = "near Gate 3 food court",
+            parentContact = "+919000000000",
             embedding = FloatArray(128) { it * 0.01f },
             timestamp = 1_720_000_000L,
         )
@@ -30,8 +33,30 @@ class MeshPayloadCodecTest {
         assertEquals(alert.id, out.id)
         assertEquals(alert.childName, out.childName)
         assertEquals(alert.age, out.age)
+        assertEquals(alert.lastSeen, out.lastSeen)
         assertArrayEquals(alert.embedding, out.embedding, 1e-6f)
         assertEquals(alert.timestamp, out.timestamp)
+    }
+
+    /**
+     * The parent's phone number must not ride the mesh: packets are
+     * unauthenticated and reach any nearby device.
+     */
+    @Test
+    fun alert_doesNotCarryParentContact() {
+        val alert = Alert(
+            id = "a1",
+            childName = "Priya",
+            parentContact = "+919000000000",
+            embedding = FloatArray(128) { it * 0.01f },
+            timestamp = 1_720_000_000L,
+        )
+
+        val raw = MeshPayloadCodec.encode(alert)
+        assertFalse(String(raw, Charsets.ISO_8859_1).contains("+919000000000"))
+
+        val out = (MeshPayloadCodec.decode(raw)?.message as MeshMessage.AlertMessage).alert
+        assertEquals("", out.parentContact)
     }
 
     @Test
@@ -54,6 +79,26 @@ class MeshPayloadCodecTest {
         assertEquals(report.confidence, out.confidence, 1e-6f)
         assertEquals(report.latitude, out.latitude, 1e-9)
         assertEquals(report.longitude, out.longitude, 1e-9)
+    }
+
+    @Test
+    fun resolve_roundTrips() {
+        val decoded = MeshPayloadCodec.decode(MeshPayloadCodec.encodeResolve("a1"))?.message
+        assertTrue(decoded is MeshMessage.ResolveMessage)
+        assertEquals("a1", (decoded as MeshMessage.ResolveMessage).alertId)
+    }
+
+    @Test
+    fun resolve_ttlDecrementsLikeAnyOtherPacket() {
+        val raw = MeshPayloadCodec.encodeResolve("a1")
+        assertEquals(6, MeshPayloadCodec.ttlOf(raw))
+
+        val relayed = MeshPayloadCodec.withDecrementedTtl(raw)
+        assertEquals(5, MeshPayloadCodec.ttlOf(relayed))
+        assertEquals(
+            "a1",
+            (MeshPayloadCodec.decode(relayed)?.message as MeshMessage.ResolveMessage).alertId,
+        )
     }
 
     @Test

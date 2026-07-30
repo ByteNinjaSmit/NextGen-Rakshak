@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * A match awaiting the volunteer's visual confirmation. [faceCrop] is the face as
@@ -35,14 +36,26 @@ class ScanViewModel(
     private val volunteer: Volunteer,
 ) : ViewModel() {
 
+    @Volatile
     private var activeAlerts: List<Alert> = emptyList()
-    private var busy = false
+
+    /**
+     * Single-flight gate for the matcher. Atomic because [onFrame] is called on
+     * the CameraX analyzer thread while the coroutine that clears it runs
+     * elsewhere — a plain `var` lets two frames through and puts two callers
+     * inside the TFLite interpreter at once.
+     */
+    private val busy = AtomicBoolean(false)
 
     private val _pending = MutableStateFlow<PendingMatch?>(null)
     val pending: StateFlow<PendingMatch?> = _pending.asStateFlow()
 
     private val _reported = MutableStateFlow(false)
     val reported: StateFlow<Boolean> = _reported.asStateFlow()
+
+    /** Set when a confirmed sighting could not be recorded at all. */
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
     /** Names of the children currently being scanned for, shown as a camera overlay. */
     private val _scanningFor = MutableStateFlow<List<String>>(emptyList())
@@ -59,29 +72,47 @@ class ScanViewModel(
 
     /** Called per frame from the camera analyzer. Drops frames while busy or pending. */
     fun onFrame(frame: Bitmap) {
-        if (busy || _pending.value != null) return
-        busy = true
+        if (_pending.value != null) return
+        if (!busy.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
                 val hit = matcher.match(frame, activeAlerts).firstOrNull() ?: return@launch
                 val alert = activeAlerts.firstOrNull { it.id == hit.alertId } ?: return@launch
                 _pending.value = PendingMatch(alert, hit.confidence, hit.faceCrop)
             } finally {
-                busy = false
+                busy.set(false)
             }
         }
     }
 
+    /**
+     * Record the confirmed sighting.
+     *
+     * The repository already falls back to an offline queue, so a failure here
+     * means the sighting could not even be stored locally. That has to be said
+     * out loud: closing the dialog silently would tell the volunteer police are
+     * on the way when nothing was recorded, and they would walk away from a
+     * child they had just found.
+     */
     fun confirm() {
         val match = _pending.value ?: return
         viewModelScope.launch {
             runCatching { reportMatch(match.alert, volunteer, match.confidence) }
-                .onSuccess { _reported.value = true }
-            _pending.value = null
+                .onSuccess {
+                    _error.value = null
+                    _reported.value = true
+                    _pending.value = null
+                }
+                .onFailure {
+                    // Keep the match on screen so Confirm can simply be retried.
+                    _error.value =
+                        "Could not report this sighting. Stay with the child and try again."
+                }
         }
     }
 
     fun dismiss() {
         _pending.value = null
+        _error.value = null
     }
 }

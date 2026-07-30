@@ -8,6 +8,10 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
 /** A signed-in identity: the Firebase uid plus whatever the provider told us. */
@@ -21,6 +25,15 @@ data class SignedInUser(
 interface AuthService {
     /** Signed-in user id, or null if not authenticated. */
     val currentUid: String?
+
+    /**
+     * The signed-in uid over time, emitting null while signed out.
+     *
+     * Firestore listeners are torn down for good by a permission-denied error,
+     * so anything the app keeps open across a sign-in has to be restarted when
+     * this changes rather than registered once at launch.
+     */
+    fun uidFlow(): Flow<String?>
 
     /** Ensure the device is authenticated (anonymous). Returns the uid. */
     suspend fun ensureSignedIn(): String
@@ -60,6 +73,12 @@ class FirebaseAuthService(
 
     override val currentUid: String?
         get() = auth.currentUser?.uid
+
+    override fun uidFlow(): Flow<String?> = callbackFlow {
+        val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
+        auth.addAuthStateListener(listener) // fires immediately with the current state
+        awaitClose { auth.removeAuthStateListener(listener) }
+    }.distinctUntilChanged()
 
     override suspend fun ensureSignedIn(): String {
         auth.currentUser?.let { return it.uid }

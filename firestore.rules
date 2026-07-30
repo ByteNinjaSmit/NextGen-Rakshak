@@ -33,11 +33,69 @@ service cloud.firestore {
 
     // Match sightings reported by volunteers.
     match /matches/{matchId} {
+
+      // Shape and value checks for a new sighting. Keep in step with
+      // FirestoreMatchSource.submit() in the Android app.
+      function validMatch() {
+        let d = request.resource.data;
+        return d.keys().hasAll([
+                 'alertId', 'childName', 'imageUrl', 'volunteerId',
+                 'volunteerRole', 'confidence', 'location', 'status', 'timestamp'
+               ])
+               && d.keys().hasOnly([
+                    'alertId', 'childName', 'imageUrl', 'volunteerId',
+                    'volunteerRole', 'confidence', 'location', 'status',
+                    'timestamp', 'relayedBy'
+                  ])
+               && d.alertId is string
+               && d.childName is string
+               && d.imageUrl is string
+               && d.volunteerId is string
+               && d.volunteerRole is string
+               && d.confidence is number
+               && d.confidence >= 0 && d.confidence <= 1
+               && d.location is latlng
+               && d.status == 'pending'
+               // Server clock, not the device's: a sighting cannot be back- or
+               // forward-dated to reorder the kiosk's feed.
+               && d.timestamp == request.time
+               && exists(/databases/$(database)/documents/alerts/$(d.alertId));
+      }
+
+      // A sighting must name its author.
+      //
+      // Either the caller reported it themselves, or — the mesh case — the
+      // caller is relaying it for a volunteer with no internet, and says so.
+      // FR-10 makes that second path essential: the reporting device is offline
+      // by definition, so the write reaches Firestore from a different account
+      // than the one in `volunteerId`. A relayed sighting is therefore only as
+      // trustworthy as the mesh it crossed, which is exactly why it is stamped
+      // rather than waved through — `relayedBy` is unforgeable even though
+      // `volunteerId` is not, so the kiosk can always tell the two apart.
+      function attributed() {
+        let d = request.resource.data;
+        return d.volunteerId == request.auth.uid
+               || (d.keys().hasAny(['relayedBy']) && d.relayedBy == request.auth.uid);
+      }
+
       allow read: if signedIn();
-      // Any signed-in volunteer may report a sighting.
-      allow create: if signedIn();
-      // Only the kiosk changes a match's status (e.g. -> dispatched).
-      allow update: if isPolice();
+
+      // A sighting is evidence: it sends officers to a location and closes a
+      // case. Without these checks any signed-in account could post a match
+      // naming another volunteer as its author, against an alert that does not
+      // exist, at coordinates of its choosing — so the record could neither be
+      // trusted nor traced back.
+      allow create: if signedIn() && validMatch() && attributed();
+
+      // Only the kiosk changes a match's status, and only its status: the
+      // reporter, location and confidence are what the record is for and must
+      // not be editable after the fact. (The Cloud Function that blanks
+      // imageUrl on resolution uses the Admin SDK and bypasses this.)
+      allow update: if isPolice()
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['status'])
+                    && request.resource.data.status in ['pending', 'dispatched'];
+
       allow delete: if false;
     }
 

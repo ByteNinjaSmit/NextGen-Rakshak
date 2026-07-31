@@ -94,7 +94,7 @@ service cloud.firestore {
       allow update: if isPolice()
                     && request.resource.data.diff(resource.data).affectedKeys()
                          .hasOnly(['status'])
-                    && request.resource.data.status in ['pending', 'dispatched'];
+                    && request.resource.data.status in ['pending', 'dispatched', 'accepted', 'dismissed'];
 
       allow delete: if false;
     }

@@ -1,7 +1,7 @@
 import type { Timestamp, GeoPoint } from "firebase/firestore";
 
 export type AlertStatus = "active" | "resolved";
-export type MatchStatus = "pending" | "dispatched";
+export type MatchStatus = "pending" | "dispatched" | "accepted" | "dismissed";
 
 /** Denormalised officer attribution stamped onto each alert. */
 export interface AlertAuthor {
@@ -22,6 +22,12 @@ export interface Alert {
   /** 128-d face embedding computed from the uploaded photo. */
   embedding: number[];
   lastSeen: string;
+  /** Date (YYYY-MM-DD) the child was last seen. Absent on alerts filed before this field existed. */
+  lastSeenDate?: string;
+  /** Time (HH:MM) the child was last seen. Absent on alerts filed before this field existed. */
+  lastSeenTime?: string;
+  /** Free-text scars/marks/accessories not covered by clothingDesc. */
+  identifyingMarks?: string;
   geoLocation?: GeoPoint;
   /** Officer who filed it. Absent on alerts created before attribution existed. */
   createdBy?: AlertAuthor;
@@ -37,6 +43,9 @@ export interface AlertInput {
   clothingDesc: string;
   parentContact: string;
   lastSeen: string;
+  lastSeenDate: string;
+  lastSeenTime: string;
+  identifyingMarks: string;
 }
 
 /**

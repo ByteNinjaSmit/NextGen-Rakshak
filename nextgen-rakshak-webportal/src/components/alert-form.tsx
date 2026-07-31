@@ -26,6 +26,9 @@ const empty: AlertInput = {
   clothingDesc: "",
   parentContact: "",
   lastSeen: "",
+  lastSeenDate: "",
+  lastSeenTime: "",
+  identifyingMarks: "",
 };
 
 export function AlertForm() {
@@ -136,8 +139,6 @@ export function AlertForm() {
           <Input
             id="age"
             type="number"
-            min={0}
-            max={18}
             required
             value={form.age || ""}
             onChange={(e) => update("age", Number(e.target.value))}
@@ -188,6 +189,39 @@ export function AlertForm() {
           placeholder="e.g. near Gate 3 food court"
           value={form.lastSeen}
           onChange={(e) => update("lastSeen", e.target.value)}
+        />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="lastSeenDate">Last Seen Date</Label>
+          <Input
+            id="lastSeenDate"
+            type="date"
+            required
+            value={form.lastSeenDate}
+            onChange={(e) => update("lastSeenDate", e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastSeenTime">Last Seen Time</Label>
+          <Input
+            id="lastSeenTime"
+            type="time"
+            required
+            value={form.lastSeenTime}
+            onChange={(e) => update("lastSeenTime", e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="identifyingMarks">Other Identifying Marks</Label>
+        <Textarea
+          id="identifyingMarks"
+          placeholder="e.g. scar on left eyebrow, wears glasses, birthmark on right hand"
+          value={form.identifyingMarks}
+          onChange={(e) => update("identifyingMarks", e.target.value)}
         />
       </div>
 

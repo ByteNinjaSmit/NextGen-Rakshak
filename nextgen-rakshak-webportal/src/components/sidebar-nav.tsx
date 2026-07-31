@@ -44,12 +44,12 @@ export function SidebarNav() {
   }
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r bg-card">
-      <div className="flex items-center gap-2 border-b px-6 py-5">
-        <ShieldAlert className="h-6 w-6 text-primary" />
+    <aside className="flex w-64 shrink-0 flex-col bg-[#0b1e3f] text-slate-200">
+      <div className="flex items-center gap-2 border-b border-white/10 px-6 py-5">
+        <ShieldAlert className="h-6 w-6 text-white" />
         <div>
-          <p className="text-lg font-bold leading-tight">Rakshak</p>
-          <p className="text-xs text-muted-foreground">Police Kiosk</p>
+          <p className="text-lg font-bold leading-tight text-white">Rakshak</p>
+          <p className="text-xs text-slate-400">Police Kiosk</p>
         </div>
       </div>
       <nav className="flex-1 space-y-1 p-3">
@@ -62,8 +62,8 @@ export function SidebarNav() {
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  ? "bg-[#1c3a6e] text-white"
+                  : "text-slate-300 hover:bg-white/10 hover:text-white"
               )}
             >
               <Icon className="h-4 w-4" />
@@ -72,13 +72,13 @@ export function SidebarNav() {
           );
         })}
       </nav>
-      <div className="space-y-2 border-t p-4">
+      <div className="space-y-2 border-t border-white/10 p-4">
         {user && (
           <div className="space-y-0.5" title={user.email ?? ""}>
-            <p className="truncate text-xs font-medium">
+            <p className="truncate text-xs font-medium text-white">
               {officer?.displayName ?? user.displayName ?? user.email}
             </p>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="truncate text-xs text-slate-400">
               {officer?.station || officer?.badgeNumber || user.email}
             </p>
           </div>
@@ -86,7 +86,7 @@ export function SidebarNav() {
         <Button
           variant="ghost"
           size="sm"
-          className="w-full justify-start text-muted-foreground"
+          className="w-full justify-start text-slate-300 hover:bg-white/10 hover:text-white"
           disabled={signingOut}
           onClick={onSignOut}
         >

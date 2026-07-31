@@ -3,6 +3,7 @@ import {
   addDoc,
   updateDoc,
   doc,
+  getDoc,
   onSnapshot,
   query,
   where,
@@ -79,12 +80,36 @@ export async function dispatchMatch(matchId: string): Promise<void> {
   await updateDoc(doc(db, "matches", matchId), { status: "dispatched" });
 }
 
+/** Accept a reviewed match. Deliberately leaves the linked alert's status untouched. */
+export async function acceptMatch(matchId: string): Promise<void> {
+  await updateDoc(doc(db, "matches", matchId), { status: "accepted" });
+}
+
+/** Dismiss a match as a false positive. Deliberately leaves the linked alert's status untouched. */
+export async function dismissMatch(matchId: string): Promise<void> {
+  await updateDoc(doc(db, "matches", matchId), { status: "dismissed" });
+}
+
 /** Subscribe to all active alerts, newest first. */
 export function subscribeActiveAlerts(cb: (alerts: Alert[]) => void): Unsubscribe {
   const q = query(alertsRef, where("status", "==", "active"), orderBy("timestamp", "desc"));
   return onSnapshot(q, (snap) => {
     cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Alert));
   });
+}
+
+/** Subscribe to every alert regardless of status, newest first — powers Alert History. */
+export function subscribeAllAlerts(cb: (alerts: Alert[]) => void): Unsubscribe {
+  const q = query(alertsRef, orderBy("timestamp", "desc"));
+  return onSnapshot(q, (snap) => {
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Alert));
+  });
+}
+
+/** One-shot fetch of a single alert, used to surface its original photo/details in the match review dialog. */
+export async function fetchAlert(alertId: string): Promise<Alert | null> {
+  const snap = await getDoc(doc(db, "alerts", alertId));
+  return snap.exists() ? ({ id: snap.id, ...snap.data() } as Alert) : null;
 }
 
 /**

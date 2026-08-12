@@ -17,7 +17,7 @@ export default function KioskLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex h-screen animate-in fade-in overflow-hidden duration-300">
       <SidebarNav />
-      <main className="flex-1 overflow-y-auto bg-muted/30 p-8">{children}</main>
+      <main className="flex-1 overflow-y-auto bg-white p-8">{children}</main>
     </div>
   );
 }

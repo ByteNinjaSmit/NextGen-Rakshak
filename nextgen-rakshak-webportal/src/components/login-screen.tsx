@@ -4,8 +4,17 @@ import { useState } from "react";
 import { ShieldAlert, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/auth-provider";
-import { SignInCancelledError, ensureOfficerRole, signInWithGoogle, signOutUser } from "@/lib/auth";
+import {
+  SignInCancelledError,
+  ensureOfficerRole,
+  registerWithEmail,
+  signInWithEmail,
+  signInWithGoogle,
+  signOutUser,
+} from "@/lib/auth";
 
 function GoogleIcon() {
   return (
@@ -35,6 +44,12 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [mode, setMode] = useState<"signin" | "register">("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+
   // A session can survive with no `police` claim (the claim call failed, or the
   // account signed in through another Rakshak app). Retry the grant instead of
   // asking for the Google popup again.
@@ -52,6 +67,20 @@ export function LoginScreen() {
         setError(err instanceof Error ? err.message : "Sign-in failed.");
       }
       setLoading(false);
+    }
+  }
+
+  async function onEmailSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setEmailError(null);
+    setEmailLoading(true);
+    try {
+      if (mode === "signin") await signInWithEmail(email, password);
+      else await registerWithEmail(email, password);
+    } catch (err) {
+      setEmailError(err instanceof Error ? err.message : "Sign-in failed.");
+    } finally {
+      setEmailLoading(false);
     }
   }
 
@@ -84,6 +113,57 @@ export function LoginScreen() {
             </Button>
           )}
           {error && <p className="text-center text-sm text-destructive">{error}</p>}
+
+          {!needsRetry && (
+            <>
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">Or continue with email</span>
+                </div>
+              </div>
+
+              <form onSubmit={onEmailSubmit} className="space-y-3">
+                <div className="space-y-1">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+                {emailError && <p className="text-center text-sm text-destructive">{emailError}</p>}
+                <Button type="submit" className="w-full" disabled={emailLoading}>
+                  {emailLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {mode === "signin" ? "Sign In" : "Register"}
+                </Button>
+                <button
+                  type="button"
+                  className="w-full text-center text-xs text-muted-foreground hover:underline"
+                  onClick={() => setMode(mode === "signin" ? "register" : "signin")}
+                >
+                  {mode === "signin"
+                    ? "New officer? Register with email"
+                    : "Already registered? Sign in"}
+                </button>
+              </form>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

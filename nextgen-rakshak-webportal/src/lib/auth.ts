@@ -1,4 +1,11 @@
-import { AuthErrorCodes, signInWithPopup, signOut, type User } from "firebase/auth";
+import {
+  AuthErrorCodes,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
+  type User,
+} from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { httpsCallable } from "firebase/functions";
 import { auth, functions, googleProvider } from "@/lib/firebase";
@@ -51,6 +58,30 @@ export async function signInWithGoogle(): Promise<User> {
   } catch (err) {
     // Never leave a half-registered session behind: without the claim every
     // Firestore write would fail anyway.
+    await signOut(auth);
+    throw err;
+  }
+  return result.user;
+}
+
+/** Sign an officer in with email and password, then register them as police. */
+export async function signInWithEmail(email: string, password: string): Promise<User> {
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  try {
+    await ensureOfficerRole(result.user);
+  } catch (err) {
+    await signOut(auth);
+    throw err;
+  }
+  return result.user;
+}
+
+/** Register a new officer account with email and password, then register them as police. */
+export async function registerWithEmail(email: string, password: string): Promise<User> {
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  try {
+    await ensureOfficerRole(result.user);
+  } catch (err) {
     await signOut(auth);
     throw err;
   }

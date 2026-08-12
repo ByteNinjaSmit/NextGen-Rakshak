@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchMatchCounts, subscribeActiveAlerts, subscribeMatches } from "@/lib/firestore";
+import { fetchMatchCounts, subscribeActiveAlerts, subscribeAllAlerts, subscribeMatches } from "@/lib/firestore";
 import type { Alert, Match } from "@/types";
 
 /** Live list of active alerts from Firestore. */
@@ -11,6 +11,22 @@ export function useActiveAlerts() {
 
   useEffect(() => {
     const unsub = subscribeActiveAlerts((data) => {
+      setAlerts(data);
+      setLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  return { alerts, loading };
+}
+
+/** Live list of every alert (active + resolved), for Alert History. */
+export function useAllAlerts() {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = subscribeAllAlerts((data) => {
       setAlerts(data);
       setLoading(false);
     });

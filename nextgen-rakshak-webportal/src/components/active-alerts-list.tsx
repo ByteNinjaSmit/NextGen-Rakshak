@@ -23,7 +23,7 @@ export function ActiveAlertsList() {
     );
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid gap-3">
       {alerts.map((alert) => (
         <Card key={alert.id}>
           <CardContent className="flex gap-4 p-4">

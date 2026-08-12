@@ -14,19 +14,29 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { MatchReviewDialog } from "@/components/match-review-dialog";
 import { useMatches } from "@/hooks/use-alerts";
 import { dispatchMatch } from "@/lib/firestore";
 import { timeAgo } from "@/lib/utils";
-import type { Match } from "@/types";
+import type { BadgeProps } from "@/components/ui/badge";
+import type { Match, MatchStatus } from "@/types";
 
 function mapsUrl(match: Match) {
   const { latitude, longitude } = match.location;
   return `https://www.google.com/maps?q=${latitude},${longitude}`;
 }
 
+const statusVariant: Record<MatchStatus, BadgeProps["variant"]> = {
+  pending: "secondary",
+  dispatched: "success",
+  accepted: "success",
+  dismissed: "destructive",
+};
+
 export function MatchesList() {
   const { matches, loading } = useMatches();
   const [failed, setFailed] = useState<string[]>([]);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
 
   /**
    * Mark the match dispatched. Deliberately not awaited by the click handler:
@@ -105,18 +115,21 @@ export function MatchesList() {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{timeAgo(match.timestamp)}</TableCell>
                 <TableCell>
-                  <Badge variant={match.status === "dispatched" ? "success" : "secondary"}>
-                    {match.status}
-                  </Badge>
+                  <Badge variant={statusVariant[match.status]}>{match.status}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex flex-col items-end gap-1">
-                    <Button size="sm" asChild onClick={() => markDispatched(match)}>
-                      <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
-                        <Navigation className="h-4 w-4" />
-                        Dispatch
-                      </a>
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedMatch(match)}>
+                        Review
+                      </Button>
+                      <Button size="sm" asChild onClick={() => markDispatched(match)}>
+                        <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
+                          <Navigation className="h-4 w-4" />
+                          Dispatch
+                        </a>
+                      </Button>
+                    </div>
                     {failed.includes(match.id) && (
                       <button
                         type="button"
@@ -134,6 +147,10 @@ export function MatchesList() {
           </TableBody>
         </Table>
       </CardContent>
+      <MatchReviewDialog
+        match={selectedMatch}
+        onOpenChange={(open) => !open && setSelectedMatch(null)}
+      />
     </Card>
   );
 }

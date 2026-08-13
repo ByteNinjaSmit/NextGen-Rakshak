@@ -47,3 +47,15 @@ export async function updateOfficerProfile(
     updatedAt: serverTimestamp(),
   });
 }
+
+/**
+ * Persist the browser's FCM token so the `onMatchCreated` Cloud Function can
+ * push to this officer. Also restricted by firestore.rules' `hasOnly` guard —
+ * keep the two lists in step.
+ */
+export async function saveOfficerFcmToken(uid: string, token: string): Promise<void> {
+  await updateDoc(officerDoc(uid), {
+    fcmToken: token,
+    updatedAt: serverTimestamp(),
+  });
+}

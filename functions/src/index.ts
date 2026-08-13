@@ -1,3 +1,5 @@
+// Runtime: nodejs22 (see firebase.json). Bumped from nodejs20 ahead of its
+// 2026-10-30 decommission.
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, GeoPoint, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -7,7 +9,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2/options";
 import * as logger from "firebase-functions/logger";
 import { computeEmbedding } from "./embedding";
-import { broadcastAlert } from "./notify";
+import { broadcastAlert, notifyOfficerOfMatch } from "./notify";
 
 export { claimOfficerRole } from "./officers";
 
@@ -90,6 +92,30 @@ export const onAlertCreated = onDocumentCreated("alerts/{alertId}", async (event
     await broadcastAlert(alertId, childName, origin);
   } catch (err) {
     logger.error("Alert broadcast failed", { alertId, err: String(err) });
+  }
+});
+
+/**
+ * Firestore trigger: when a volunteer reports a sighting, push it to the
+ * officer who filed the matching alert. Reads `alerts/{alertId}.createdBy.uid`
+ * to find who to notify — firestore.rules' `validMatch()` already guarantees
+ * that alert exists before the match can be created.
+ */
+export const onMatchCreated = onDocumentCreated("matches/{matchId}", async (event) => {
+  const snap = event.data;
+  if (!snap) return;
+
+  const { alertId, childName, confidence } = snap.data();
+  try {
+    const alert = await getFirestore().collection("alerts").doc(alertId).get();
+    const officerUid: string | undefined = alert.get("createdBy")?.uid;
+    if (!officerUid) {
+      logger.warn("Match's alert has no createdBy.uid; skipping push", { matchId: event.params.matchId, alertId });
+      return;
+    }
+    await notifyOfficerOfMatch(officerUid, childName, confidence);
+  } catch (err) {
+    logger.error("Match push failed", { matchId: event.params.matchId, alertId, err: String(err) });
   }
 });
 

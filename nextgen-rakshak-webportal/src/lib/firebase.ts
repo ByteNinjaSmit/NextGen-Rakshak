@@ -3,6 +3,7 @@ import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getAuth, GoogleAuthProvider, type Auth } from "firebase/auth";
 import { getFunctions, type Functions } from "firebase/functions";
+import { getMessaging, getToken, onMessage, isSupported, type Messaging, type MessagePayload } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -23,4 +24,27 @@ export const auth: Auth = getAuth(app);
 // Must match setGlobalOptions({ region }) in functions/src/index.ts.
 export const functions: Functions = getFunctions(app, "us-central1");
 export const googleProvider = new GoogleAuthProvider();
+
+// Kiosk browser push (match/alert notifications). SW registration + getToken
+// require a secure context, so this must only run client-side.
+export async function requestKioskNotifications(): Promise<string | null> {
+  if (typeof window === "undefined" || !(await isSupported())) return null;
+
+  const permission = await Notification.requestPermission();
+  if (permission !== "granted") return null;
+
+  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+  const messaging: Messaging = getMessaging(app);
+  return getToken(messaging, {
+    vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+    serviceWorkerRegistration: registration,
+  });
+}
+
+export async function onKioskMessage(callback: (payload: MessagePayload) => void): Promise<() => void> {
+  if (typeof window === "undefined" || !(await isSupported())) return () => {};
+  const messaging: Messaging = getMessaging(app);
+  return onMessage(messaging, callback);
+}
+
 export default app;

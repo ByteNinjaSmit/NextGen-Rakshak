@@ -123,7 +123,7 @@ service cloud.firestore {
       allow update: if isPolice()
                     && request.auth.uid == uid
                     && request.resource.data.diff(resource.data).affectedKeys()
-                         .hasOnly(['displayName', 'phone', 'station', 'badgeNumber', 'updatedAt']);
+                         .hasOnly(['displayName', 'phone', 'station', 'badgeNumber', 'fcmToken', 'updatedAt']);
 
       // Records are created by the Cloud Function on sign-in, never by a client.
       allow create, delete: if false;

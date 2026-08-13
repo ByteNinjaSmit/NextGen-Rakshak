@@ -65,6 +65,8 @@ export interface Officer {
   createdAt: Timestamp;
   lastLoginAt: Timestamp;
   updatedAt?: Timestamp;
+  /** Browser push token for the kiosk notification bell; absent until granted. */
+  fcmToken?: string;
 }
 
 /** The subset of an officer record firestore.rules lets the kiosk write. */

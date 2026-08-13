@@ -98,3 +98,44 @@ export async function broadcastAlert(
     });
   }
 }
+
+/**
+ * Push a new volunteer sighting to the officer who filed the matching alert.
+ * The token lives on `officers/{uid}.fcmToken`, saved by the kiosk's
+ * notification bell — absent until that officer opts in, in which case this
+ * is a silent no-op (there is no one to notify yet).
+ */
+export async function notifyOfficerOfMatch(
+  officerUid: string,
+  childName: string,
+  confidence: number,
+): Promise<void> {
+  const db = getFirestore();
+  const officerRef = db.collection("officers").doc(officerUid);
+  const officerDoc = await officerRef.get();
+  const token = officerDoc.get("fcmToken");
+  if (typeof token !== "string" || token.length === 0) return;
+
+  const messaging = getMessaging();
+  try {
+    await messaging.send({
+      token,
+      notification: {
+        title: "New Match Sighting",
+        body: `${childName} — ${Math.round(confidence * 100)}% confidence match reported.`,
+      },
+      data: { childName },
+      webpush: { fcmOptions: { link: "/matches" } },
+    });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (
+      code === "messaging/invalid-registration-token" ||
+      code === "messaging/registration-token-not-registered"
+    ) {
+      await officerRef.update({ fcmToken: "" }).catch(() => undefined);
+      return;
+    }
+    logger.error("Match push failed", { officerUid, err: String(err) });
+  }
+}

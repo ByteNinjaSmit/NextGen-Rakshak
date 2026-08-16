@@ -3,7 +3,6 @@ package com.rakshak.app.presentation.navigation
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.VerifiedUser
@@ -32,13 +31,13 @@ import com.rakshak.app.presentation.screen.ProfileScreen
 import com.rakshak.app.presentation.screen.ScanScreen
 import com.rakshak.app.presentation.viewmodel.HomeViewModel
 import com.rakshak.app.presentation.viewmodel.LoginViewModel
+import com.rakshak.app.presentation.viewmodel.MatchesViewModel
 import com.rakshak.app.presentation.viewmodel.ScanViewModel
 import com.rakshak.app.presentation.viewmodel.ViewModelFactory
 
 object Routes {
     const val LOGIN = "login"
     const val HOME = "home"
-    const val ALERTS = "alerts"
     const val SCAN = "scan"
     const val MATCHES = "matches"
     const val PROFILE = "profile"
@@ -59,7 +58,7 @@ fun AppNavigation() {
     val currentDestination = navBackStackEntry?.destination
 
     val showBottomBar = currentDestination?.route in listOf(
-        Routes.HOME, Routes.ALERTS, Routes.MATCHES, Routes.PROFILE
+        Routes.HOME, Routes.MATCHES, Routes.PROFILE
     )
 
     Scaffold(
@@ -68,7 +67,6 @@ fun AppNavigation() {
                 NavigationBar {
                     val items = listOf(
                         Triple(Routes.HOME, "Home", Icons.Filled.Home),
-                        Triple(Routes.ALERTS, "Alerts", Icons.Filled.Notifications),
                         Triple(Routes.SCAN, "Scan", Icons.Filled.Search),
                         Triple(Routes.MATCHES, "Matches", Icons.Filled.VerifiedUser),
                         Triple(Routes.PROFILE, "Profile", Icons.Filled.Person)
@@ -131,13 +129,7 @@ fun AppNavigation() {
                 HomeScreen(
                     viewModel = homeViewModel,
                     onStartScan = { navController.navigate(Routes.SCAN) },
-                    onSignOut = loginViewModel::signOut,
                 )
-            }
-
-            composable(Routes.ALERTS) {
-                // Placeholder for Alerts
-                Text("Alerts Screen")
             }
 
             composable(Routes.SCAN) {
@@ -152,7 +144,14 @@ fun AppNavigation() {
             }
 
             composable(Routes.MATCHES) {
-                MatchesScreen()
+                val current = volunteer
+                if (current == null) {
+                    LaunchedEffect(Unit) { navController.popBackStack() }
+                } else {
+                    val matchesViewModel: MatchesViewModel =
+                        viewModel(factory = ViewModelFactory(context, current))
+                    MatchesScreen(matchesViewModel)
+                }
             }
 
             composable(Routes.PROFILE) {

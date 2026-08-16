@@ -5,6 +5,8 @@ import com.rakshak.app.data.datasource.MatchDataSource
 import com.rakshak.app.data.local.PendingMatchDao
 import com.rakshak.app.data.local.PendingMatchEntity
 import com.rakshak.app.data.model.MatchReport
+import com.rakshak.app.data.model.MatchStatusReport
+import kotlinx.coroutines.flow.Flow
 
 interface MatchRepository {
     /** Submit a match. Falls back to local queue if the network fails. */
@@ -14,6 +16,9 @@ interface MatchRepository {
     suspend fun syncPending(): Int
 
     suspend fun pendingCount(): Int
+
+    /** Live status of every match this volunteer has reported. */
+    fun observeMyMatches(volunteerId: String): Flow<List<MatchStatusReport>>
 }
 
 /**
@@ -50,6 +55,9 @@ class DefaultMatchRepository(
     }
 
     override suspend fun pendingCount(): Int = pendingDao.count()
+
+    override fun observeMyMatches(volunteerId: String): Flow<List<MatchStatusReport>> =
+        source.observeMyMatches(volunteerId)
 
     companion object {
         private const val TAG = "MatchRepository"

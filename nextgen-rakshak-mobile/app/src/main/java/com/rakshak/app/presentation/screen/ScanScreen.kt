@@ -7,60 +7,80 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.rakshak.app.presentation.theme.AlertRed
+import com.rakshak.app.presentation.theme.PrimaryBlue
+import com.rakshak.app.presentation.theme.SafeGreen
 import com.rakshak.app.presentation.viewmodel.ScanViewModel
 import com.rakshak.app.utils.Haptics
 import com.rakshak.app.utils.rotate
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
-/** Shared size/shape for the two comparison thumbnails. */
 private val faceModifier = Modifier
-    .size(120.dp)
+    .size(100.dp)
     .clip(RoundedCornerShape(8.dp))
 
-/** A comparison thumbnail with a caption saying which image it is. */
-@Composable
-private fun LabelledFace(label: String, image: @Composable () -> Unit) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        image()
-        Text(label, style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-/** Live camera scan. Feeds frames to [ScanViewModel] and prompts on a match. */
 @SuppressLint("UnsafeOptInUsageError")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -70,124 +90,328 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val scanningFor by viewModel.scanningFor.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
 
+    var showConfirmation by remember { mutableStateOf(false) }
+
     LaunchedEffect(reported) {
-        if (reported) onReported()
+        if (reported) {
+            showConfirmation = true
+        }
     }
 
-    // Buzz when a candidate appears — the volunteer is watching the crowd, not the screen.
     LaunchedEffect(pending) {
         if (pending != null) Haptics.vibrateMatch(context)
     }
 
-    Box(Modifier.fillMaxSize()) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                val previewView = PreviewView(ctx)
-                val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                providerFuture.addListener({
-                    val provider = providerFuture.get()
-
-                    val preview = Preview.Builder().build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
-                    }
-
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .apply {
-                            setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
-                                // Apply sensor rotation so faces are upright for ML Kit.
-                                val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
-                                viewModel.onFrame(upright)
-                                proxy.close()
-                            }
-                        }
-
-                    provider.unbindAll()
-                    provider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        analysis,
-                    )
-                }, ContextCompat.getMainExecutor(ctx))
-                previewView
-            },
+    if (showConfirmation) {
+        MatchConfirmationScreen(
+            childName = pending?.alert?.childName ?: "Unknown",
+            location = pending?.alert?.lastSeen ?: "Unknown",
+            onDone = onReported
         )
+        return
+    }
 
-        // Tell the volunteer who they are looking for, over the live preview.
-        if (scanningFor.isNotEmpty()) {
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(16.dp),
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-            ) {
-                Text(
-                    text = "Scanning for ${scanningFor.joinToString(", ")}…",
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    fontWeight = FontWeight.Medium,
-                )
-            }
-        }
-
-        val match = pending
-        if (match != null) {
-            AlertDialog(
-                onDismissRequest = viewModel::dismiss,
-                title = { Text("Possible Match — ${match.alert.childName}") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Side-by-side: the parent's photo next to the live capture, so the
-                        // volunteer compares the two faces instead of trusting the score.
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-                        ) {
-                            LabelledFace(label = "Reported photo") {
-                                AsyncImage(
-                                    model = match.alert.imageUrl,
-                                    contentDescription = "Photo of ${match.alert.childName} submitted by the parent",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = faceModifier,
-                                )
-                            }
-                            LabelledFace(label = "Camera now") {
-                                Image(
-                                    bitmap = match.faceCrop.asImageBitmap(),
-                                    contentDescription = "Face just captured by the camera",
-                                    contentScale = ContentScale.Crop,
-                                    modifier = faceModifier,
-                                )
-                            }
-                        }
-                        Text(
-                            "Confidence ${(match.confidence * 100).toInt()}%",
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text("${match.alert.age} yrs · ${match.alert.gender}")
-                        Text(match.alert.clothingDesc)
-                        Text("Is this the child? Confirm to alert police with your location.")
-                        // A failed report leaves the dialog open; say so rather than
-                        // letting the volunteer believe police have been notified.
-                        error?.let {
-                            Text(
-                                text = it,
-                                color = MaterialTheme.colorScheme.error,
-                                fontWeight = FontWeight.Medium,
-                            )
-                        }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Scanning...", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = { viewModel.dismiss(); onReported() }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                confirmButton = {
-                    TextButton(onClick = viewModel::confirm) {
-                        Text(if (error != null) "Try again" else "Confirm")
+                actions = {
+                    IconButton(onClick = { /* Toggle flash */ }) {
+                        Icon(Icons.Filled.FlashOn, contentDescription = "Flash")
                     }
                 },
-                dismissButton = { TextButton(onClick = viewModel::dismiss) { Text("Not a match") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            // Camera Preview
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    val previewView = PreviewView(ctx)
+                    val providerFuture = ProcessCameraProvider.getInstance(ctx)
+                    providerFuture.addListener({
+                        val provider = providerFuture.get()
+
+                        val preview = Preview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
+
+                        val analysis = ImageAnalysis.Builder()
+                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                            .build()
+                            .apply {
+                                setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                                    val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
+                                    viewModel.onFrame(upright)
+                                    proxy.close()
+                                }
+                            }
+
+                        provider.unbindAll()
+                        provider.bindToLifecycle(
+                            lifecycleOwner,
+                            CameraSelector.DEFAULT_BACK_CAMERA,
+                            preview,
+                            analysis,
+                        )
+                    }, ContextCompat.getMainExecutor(ctx))
+                    previewView
+                },
+            )
+
+            // Scanning Target Banner
+            if (scanningFor.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.White.copy(alpha = 0.9f),
+                ) {
+                    Text(
+                        text = "Point camera at people's face",
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
+                        fontWeight = FontWeight.Medium,
+                        color = Color.DarkGray
+                    )
+                }
+            }
+
+            // Face Detection Box Overlay (Decorative)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(200.dp)
+                    .border(3.dp, SafeGreen, RoundedCornerShape(16.dp))
+            )
+
+            // Bottom Controls
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.White)
+                    .padding(vertical = 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(onClick = { /* Open Gallery */ }) {
+                            Icon(Icons.Filled.Image, contentDescription = "Gallery", modifier = Modifier.size(28.dp))
+                        }
+                        Text("Gallery", fontSize = 12.sp)
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(
+                            onClick = { onReported() },
+                            modifier = Modifier
+                                .size(64.dp)
+                                .background(PrimaryBlue, CircleShape)
+                        ) {
+                            Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(32.dp))
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Stop", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        IconButton(onClick = { /* Toggle Torch */ }) {
+                            Icon(Icons.Filled.FlashOn, contentDescription = "Torch", modifier = Modifier.size(28.dp))
+                        }
+                        Text("Torch", fontSize = 12.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Scanning will work offline", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Icon(Icons.Filled.Wifi, contentDescription = null, tint = SafeGreen, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
+
+    // Match Dialog Overlay
+    val match = pending
+    if (match != null && !showConfirmation) {
+        Dialog(onDismissRequest = viewModel::dismiss) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                modifier = Modifier.fillMaxWidth().padding(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Possible Match", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Text("Missing Child", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    AsyncImage(
+                        model = match.alert.imageUrl,
+                        contentDescription = "Missing Child",
+                        contentScale = ContentScale.Crop,
+                        modifier = faceModifier
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text("Detected Face", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Image(
+                        bitmap = match.faceCrop.asImageBitmap(),
+                        contentDescription = "Detected Face",
+                        contentScale = ContentScale.Crop,
+                        modifier = faceModifier
+                    )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Similarity Score", fontWeight = FontWeight.Medium)
+                        Text("${(match.confidence * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = PrimaryBlue)
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Text("Does this look like the missing child?", fontSize = 14.sp, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (error != null) {
+                        Text(
+                            text = error!!,
+                            color = AlertRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Button(
+                            onClick = viewModel::confirm,
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SafeGreen)
+                        ) {
+                            Text("Yes, It's a Match")
+                        }
+                        
+                        Button(
+                            onClick = viewModel::dismiss,
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                        ) {
+                            Text("Not a Match")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MatchConfirmationScreen(childName: String, location: String, onDone: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Confirm Match", fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    IconButton(onClick = onDone) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = "Success",
+                tint = SafeGreen,
+                modifier = Modifier.size(80.dp)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Thank You!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Your match has been submitted successfully.",
+                textAlign = TextAlign.Center,
+                color = Color.Gray
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+
+            val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
+            val currentTime = dateFormat.format(Date())
+
+            Column(modifier = Modifier.fillMaxWidth()) {
+                DetailRow("Child Name", childName)
+                DetailRow("Matched At", currentTime)
+                DetailRow("Location", location)
+                DetailRow("Matched By", "You")
+            }
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Button(
+                onClick = onDone,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+                shape = RoundedCornerShape(25.dp)
+            ) {
+                Text("Done", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(label, color = Color.Gray, fontSize = 14.sp)
+        }
+        Text(value, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, textAlign = TextAlign.End)
     }
 }

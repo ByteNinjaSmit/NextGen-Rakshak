@@ -1,5 +1,8 @@
 package com.rakshak.app.presentation.navigation
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -14,6 +17,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,6 +66,24 @@ fun AppNavigation() {
     val showBottomBar = currentDestination?.route in listOf(
         Routes.HOME, Routes.MATCHES, Routes.PROFILE
     )
+
+    // These three are the bottom-tab roots: the back stack under them is flattened
+    // (see the NavigationBarItem popUpTo below), so a plain back press here has
+    // nothing left to pop and exits the app on the very first tap. Require a
+    // second tap within the window instead of exiting immediately.
+    if (showBottomBar) {
+        var lastBackPressMillis by remember { mutableStateOf(0L) }
+        val toastContext = LocalContext.current
+        BackHandler {
+            val now = System.currentTimeMillis()
+            if (now - lastBackPressMillis < 2000) {
+                (activityContext as? Activity)?.finish()
+            } else {
+                lastBackPressMillis = now
+                Toast.makeText(toastContext, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Scaffold(
         bottomBar = {

@@ -1,6 +1,7 @@
 package com.rakshak.app.presentation.viewmodel
 
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rakshak.app.data.model.Alert
@@ -70,13 +71,23 @@ class ScanViewModel(
         }
     }
 
-    /** Called per frame from the camera analyzer. Drops frames while busy or pending. */
+    /**
+     * Called per frame from the camera analyzer. Drops frames while busy or pending.
+     *
+     * The whole body is wrapped: this runs once per detected face, indefinitely, for
+     * as long as the scan screen is open, so any single bad frame (an out-of-bounds
+     * crop, a detector hiccup, a TFLite shape mismatch) must not be allowed to
+     * propagate — an uncaught exception here crashes the entire app mid-scan.
+     */
     fun onFrame(frame: Bitmap) {
         if (_pending.value != null) return
         if (!busy.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
-                val hit = matcher.match(frame, activeAlerts).firstOrNull() ?: return@launch
+                val hit = runCatching { matcher.match(frame, activeAlerts) }
+                    .onFailure { Log.w(TAG, "Frame match failed; skipping frame", it) }
+                    .getOrNull()
+                    ?.firstOrNull() ?: return@launch
                 val alert = activeAlerts.firstOrNull { it.id == hit.alertId } ?: return@launch
                 _pending.value = PendingMatch(alert, hit.confidence, hit.faceCrop)
             } finally {
@@ -97,7 +108,7 @@ class ScanViewModel(
     fun confirm() {
         val match = _pending.value ?: return
         viewModelScope.launch {
-            runCatching { reportMatch(match.alert, volunteer, match.confidence) }
+            runCatching { reportMatch(match.alert, volunteer, match.confidence, match.faceCrop) }
                 .onSuccess {
                     _error.value = null
                     _reported.value = true
@@ -114,5 +125,9 @@ class ScanViewModel(
     fun dismiss() {
         _pending.value = null
         _error.value = null
+    }
+
+    private companion object {
+        const val TAG = "ScanViewModel"
     }
 }

@@ -4,7 +4,6 @@ import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
-import com.google.firebase.firestore.Query
 import com.rakshak.app.data.auth.AuthService
 import com.rakshak.app.data.model.MatchReport
 import com.rakshak.app.data.model.MatchStatus
@@ -47,9 +46,12 @@ class FirestoreMatchSource(
     }
 
     override fun observeMyMatches(volunteerId: String): Flow<List<MatchStatusReport>> = callbackFlow {
+        // Equality-only query (no orderBy): sorting is done client-side below so this
+        // never depends on a composite Firestore index being deployed. A query that
+        // needs an undeployed index doesn't error loudly here — the listener just
+        // reports FAILED_PRECONDITION, which reads as "no matches" to the volunteer.
         val registration = firestore.collection(Constants.COLLECTION_MATCHES)
             .whereEqualTo("volunteerId", volunteerId)
-            .orderBy("timestamp", Query.Direction.DESCENDING)
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     Log.w(TAG, "My-matches listener error; treating as empty", error)
@@ -70,7 +72,7 @@ class FirestoreMatchSource(
                         },
                         timestampMillis = doc.getTimestamp("timestamp")?.toDate()?.time ?: 0L,
                     )
-                }
+                }.sortedByDescending { it.timestampMillis }
                 trySend(reports)
             }
         awaitClose { registration.remove() }

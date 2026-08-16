@@ -26,7 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
@@ -91,6 +90,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val error by viewModel.error.collectAsStateWithLifecycle()
 
     var showConfirmation by remember { mutableStateOf(false) }
+    var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    var torchOn by remember { mutableStateOf(false) }
 
     LaunchedEffect(reported) {
         if (reported) {
@@ -118,11 +119,6 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = { viewModel.dismiss(); onReported() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* Toggle flash */ }) {
-                        Icon(Icons.Filled.FlashOn, contentDescription = "Flash")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -159,7 +155,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                             }
 
                         provider.unbindAll()
-                        provider.bindToLifecycle(
+                        camera = provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
@@ -207,16 +203,9 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(onClick = { /* Open Gallery */ }) {
-                            Icon(Icons.Filled.Image, contentDescription = "Gallery", modifier = Modifier.size(28.dp))
-                        }
-                        Text("Gallery", fontSize = 12.sp)
-                    }
-
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         IconButton(
                             onClick = { onReported() },
@@ -231,8 +220,21 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                     }
 
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        IconButton(onClick = { /* Toggle Torch */ }) {
-                            Icon(Icons.Filled.FlashOn, contentDescription = "Torch", modifier = Modifier.size(28.dp))
+                        IconButton(
+                            onClick = {
+                                val cam = camera ?: return@IconButton
+                                if (cam.cameraInfo.hasFlashUnit()) {
+                                    torchOn = !torchOn
+                                    cam.cameraControl.enableTorch(torchOn)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Filled.FlashOn,
+                                contentDescription = "Torch",
+                                tint = if (torchOn) PrimaryBlue else Color.Black,
+                                modifier = Modifier.size(28.dp)
+                            )
                         }
                         Text("Torch", fontSize = 12.sp)
                     }

@@ -1,5 +1,6 @@
 package com.rakshak.app.presentation.screen
 
+import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,8 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
@@ -46,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,7 +65,7 @@ import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit, onSignOut: () -> Unit = {}) {
+fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit) {
     val alerts by viewModel.activeAlerts.collectAsStateWithLifecycle()
     var selectedAlert by remember { mutableStateOf<Alert?>(null) }
 
@@ -79,17 +79,7 @@ fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit, onSignOut: () 
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("Dashboard", modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = FontWeight.SemiBold) },
-                    navigationIcon = {
-                        IconButton(onClick = { /* Open drawer */ }) {
-                            Icon(Icons.Filled.Menu, contentDescription = "Menu")
-                        }
-                    },
-                    actions = {
-                        IconButton(onClick = onSignOut) {
-                            Icon(Icons.Filled.Notifications, contentDescription = "Notifications")
-                        }
-                    }
+                    title = { Text("Dashboard", fontWeight = FontWeight.SemiBold) },
                 )
             },
         ) { padding ->
@@ -116,16 +106,12 @@ fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit, onSignOut: () 
                     }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Active Alerts", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("View All", color = PrimaryBlue, fontSize = 14.sp, modifier = Modifier.clickable { })
-                }
+                Text(
+                    "Active Alerts",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
 
                 if (alerts.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -229,7 +215,17 @@ fun AlertDetailsScreen(alert: Alert, onBack: () -> Unit, onStartScan: () -> Unit
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* Share */ }) {
+                    val context = LocalContext.current
+                    IconButton(onClick = {
+                        val text = "MISSING: ${alert.childName}, ${alert.age} yrs. " +
+                            "Last seen: ${alert.lastSeen}. Wearing: ${alert.clothingDesc}. " +
+                            "If seen, contact ${alert.parentContact.ifBlank { "the police" }}."
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share alert"))
+                    }) {
                         Icon(Icons.Filled.Share, contentDescription = "Share")
                     }
                 }

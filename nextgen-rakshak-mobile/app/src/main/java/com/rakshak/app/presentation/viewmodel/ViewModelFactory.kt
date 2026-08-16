@@ -41,6 +41,14 @@ class ViewModelFactory(
             ) as T
         }
 
+        modelClass.isAssignableFrom(MatchesViewModel::class.java) -> {
+            val current = requireNotNull(volunteer) { "MatchesViewModel requires a signed-in volunteer" }
+            MatchesViewModel(
+                repository = ServiceLocator.matchRepository(context),
+                volunteer = current,
+            ) as T
+        }
+
         else -> throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
     }
 }

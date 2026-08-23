@@ -44,14 +44,17 @@ service cloud.firestore {
                ])
                && d.keys().hasOnly([
                     'alertId', 'childName', 'imageUrl', 'volunteerId',
-                    'volunteerRole', 'confidence', 'location', 'status',
-                    'timestamp', 'relayedBy'
+                    'volunteerRole', 'volunteerName', 'confidence', 'location',
+                    'status', 'timestamp', 'relayedBy'
                   ])
                && d.alertId is string
                && d.childName is string
                && d.imageUrl is string
                && d.volunteerId is string
                && d.volunteerRole is string
+               // Optional: blank for the demo phone-only sign-in path, which
+               // never collects a name — see Volunteer.kt on the mobile app.
+               && (!d.keys().hasAny(['volunteerName']) || d.volunteerName is string)
                && d.confidence is number
                && d.confidence >= 0 && d.confidence <= 1
                && d.location is latlng

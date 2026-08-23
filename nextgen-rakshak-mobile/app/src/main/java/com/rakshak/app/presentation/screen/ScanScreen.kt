@@ -12,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -56,6 +57,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -294,9 +296,10 @@ private fun MatchPopupDialog(
 ) {
     Dialog(
         onDismissRequest = onReject,
-        properties = DialogProperties(dismissOnClickOutside = false)
+        properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false)
     ) {
         Surface(
+            modifier = Modifier.fillMaxWidth(0.92f),
             shape = RoundedCornerShape(20.dp),
             color = Color.White,
             shadowElevation = 8.dp,
@@ -353,6 +356,9 @@ private fun MatchPopupDialog(
                     DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}", valueColor = Color.Black)
                     DetailRow("Clothing", alert.clothingDesc, valueColor = Color.Black)
                     DetailRow("Last Seen", alert.lastSeen, valueColor = Color.Black)
+                    if (alert.identifyingMarks.isNotBlank()) {
+                        DetailRow("Identifying Marks", alert.identifyingMarks, valueColor = Color.Black)
+                    }
                 }
 
                 if (error != null) {
@@ -373,23 +379,39 @@ private fun MatchPopupDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
                         onClick = onReject,
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(52.dp),
                         shape = RoundedCornerShape(25.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AlertRed, contentColor = Color.White)
                     ) {
-                        Text("Reject")
+                        Text(
+                            "Reject",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                     Button(
                         onClick = onConfirm,
-                        modifier = Modifier.weight(1f).height(48.dp),
+                        modifier = Modifier.weight(1f).height(52.dp),
                         shape = RoundedCornerShape(25.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = SafeGreen, contentColor = Color.White)
                     ) {
-                        Text("Confirm Match")
+                        Text(
+                            "Confirm Match",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
@@ -466,13 +488,20 @@ private fun DetailRow(label: String, value: String, valueColor: Color = Color.Un
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text(label, color = Color.Gray, fontSize = 14.sp)
         }
-        Text(value, color = valueColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, textAlign = TextAlign.End)
+        Text(
+            value,
+            color = valueColor,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
+        )
     }
 }

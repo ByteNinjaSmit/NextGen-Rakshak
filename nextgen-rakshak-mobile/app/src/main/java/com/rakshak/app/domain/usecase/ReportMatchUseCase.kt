@@ -32,6 +32,7 @@ class ReportMatchUseCase(
                 childName = alert.childName,
                 imageUrl = sightingImageUrl,
                 volunteerId = volunteer.id,
+                volunteerName = volunteer.name,
                 volunteerRole = volunteer.role,
                 confidence = confidence,
                 latitude = location?.latitude ?: 0.0,

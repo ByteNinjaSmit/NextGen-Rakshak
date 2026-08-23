@@ -7,6 +7,7 @@ data class MatchReport(
     val imageUrl: String,
     val volunteerId: String,
     val volunteerRole: String,
+    val volunteerName: String = "",
     val confidence: Float,
     val latitude: Double,
     val longitude: Double,

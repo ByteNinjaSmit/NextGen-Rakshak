@@ -27,6 +27,7 @@ class FirestoreMatchSource(
             put("childName", report.childName)
             put("imageUrl", report.imageUrl)
             put("volunteerId", report.volunteerId)
+            put("volunteerName", report.volunteerName)
             put("volunteerRole", report.volunteerRole)
             put("confidence", report.confidence)
             put("location", GeoPoint(report.latitude, report.longitude))

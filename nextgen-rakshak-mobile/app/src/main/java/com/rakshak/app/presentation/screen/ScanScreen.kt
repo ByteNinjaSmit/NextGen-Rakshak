@@ -240,7 +240,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                                 Icon(Icons.Filled.Stop, contentDescription = "Stop scanning", tint = Color.White, modifier = Modifier.size(32.dp))
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Stop Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Stop Scan", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -260,7 +260,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
-                            Text("Torch", fontSize = 12.sp)
+                            Text("Torch", color = Color.Black, fontSize = 12.sp)
                         }
                     }
 
@@ -306,7 +306,7 @@ private fun MatchPopupDialog(
                     .fillMaxWidth()
                     .padding(20.dp)
             ) {
-                Text("Possible Match Found", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Text("Possible Match Found", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Row(
@@ -342,17 +342,17 @@ private fun MatchPopupDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Similarity Score", fontWeight = FontWeight.Medium)
+                    Text("Similarity Score", color = Color.Black, fontWeight = FontWeight.Medium)
                     Text("${(confidence * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = PrimaryBlue)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    DetailRow("Child Name", alert.childName)
-                    DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}")
-                    DetailRow("Clothing", alert.clothingDesc)
-                    DetailRow("Last Seen", alert.lastSeen)
+                    DetailRow("Child Name", alert.childName, valueColor = Color.Black)
+                    DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}", valueColor = Color.Black)
+                    DetailRow("Clothing", alert.clothingDesc, valueColor = Color.Black)
+                    DetailRow("Last Seen", alert.lastSeen, valueColor = Color.Black)
                 }
 
                 if (error != null) {
@@ -364,6 +364,7 @@ private fun MatchPopupDialog(
 
                 Text(
                     "Does this look like the missing child?",
+                    color = Color.Black,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
@@ -378,7 +379,7 @@ private fun MatchPopupDialog(
                         onClick = onReject,
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(25.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                        colors = ButtonDefaults.buttonColors(containerColor = AlertRed, contentColor = Color.White)
                     ) {
                         Text("Reject")
                     }
@@ -386,7 +387,7 @@ private fun MatchPopupDialog(
                         onClick = onConfirm,
                         modifier = Modifier.weight(1f).height(48.dp),
                         shape = RoundedCornerShape(25.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SafeGreen)
+                        colors = ButtonDefaults.buttonColors(containerColor = SafeGreen, contentColor = Color.White)
                     ) {
                         Text("Confirm Match")
                     }
@@ -460,7 +461,7 @@ fun MatchConfirmationScreen(childName: String, location: String, onDone: () -> U
 }
 
 @Composable
-private fun DetailRow(label: String, value: String) {
+private fun DetailRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -472,6 +473,6 @@ private fun DetailRow(label: String, value: String) {
             Spacer(modifier = Modifier.width(8.dp))
             Text(label, color = Color.Gray, fontSize = 14.sp)
         }
-        Text(value, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, textAlign = TextAlign.End)
+        Text(value, color = valueColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, textAlign = TextAlign.End)
     }
 }

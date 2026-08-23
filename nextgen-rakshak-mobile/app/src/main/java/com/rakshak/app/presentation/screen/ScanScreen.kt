@@ -59,6 +59,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -87,7 +89,6 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val error by viewModel.error.collectAsStateWithLifecycle()
 
     var showConfirmation by remember { mutableStateOf(false) }
-    var showReview by remember { mutableStateOf(false) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var torchOn by remember { mutableStateOf(false) }
     var lastReportedChildName by remember { mutableStateOf("Unknown") }
@@ -96,18 +97,12 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     LaunchedEffect(reported) {
         if (reported) {
             showConfirmation = true
-            showReview = false
         }
     }
 
     LaunchedEffect(pending) {
-        val match = pending
-        if (match != null) {
+        if (pending != null) {
             Haptics.vibrateMatch(context)
-        } else {
-            // Cleared by dismiss() or a successful confirm() — either way the
-            // compare screen no longer has anything to show.
-            showReview = false
         }
     }
 
@@ -120,28 +115,24 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
         return
     }
 
-    // Full-screen side-by-side compare, entered only after the volunteer taps
-    // "Confirm Match" on the live overlay below — nothing is submitted until
-    // they explicitly confirm again from here.
+    // Popup shown the instant a face match is detected — side-by-side compare
+    // with the alert's details and the similarity score, all in one dialog so
+    // nothing is submitted until the volunteer confirms right here.
     val reviewMatch = pending
-    if (showReview && reviewMatch != null) {
-        BackHandler { showReview = false }
-        MatchReviewScreen(
+    if (reviewMatch != null) {
+        BackHandler { viewModel.dismiss() }
+        MatchPopupDialog(
             alert = reviewMatch.alert,
             faceCrop = reviewMatch.faceCrop,
             confidence = reviewMatch.confidence,
             error = error,
-            onReject = {
-                viewModel.dismiss()
-                showReview = false
-            },
+            onReject = viewModel::dismiss,
             onConfirm = {
                 lastReportedChildName = reviewMatch.alert.childName
                 lastReportedLocation = reviewMatch.alert.lastSeen
                 viewModel.confirm()
             },
         )
-        return
     }
 
     Scaffold(
@@ -224,8 +215,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                     .border(3.dp, SafeGreen, RoundedCornerShape(16.dp))
             )
 
-            // Bottom Controls — replaced by the match banner while a candidate is pending,
-            // so the volunteer sees the percentage without the camera being covered.
+            // Bottom Controls — hidden while the match popup is showing.
             if (pending == null) {
                 Column(
                     modifier = Modifier
@@ -247,10 +237,10 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                                     .size(64.dp)
                                     .background(PrimaryBlue, CircleShape)
                             ) {
-                                Icon(Icons.Filled.Stop, contentDescription = "Stop", tint = Color.White, modifier = Modifier.size(32.dp))
+                                Icon(Icons.Filled.Stop, contentDescription = "Stop scanning", tint = Color.White, modifier = Modifier.size(32.dp))
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("Stop", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Stop Scan", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -282,79 +272,19 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                     }
                 }
             }
-
-            // Non-blocking match banner: the camera stays live behind it. Shows the
-            // percentage as soon as a face is detected; nothing is submitted until
-            // the volunteer taps through to the full compare screen and confirms there.
-            val match = pending
-            if (match != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-                    color = Color.White,
-                    shadowElevation = 8.dp,
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Image(
-                                bitmap = match.faceCrop.asImageBitmap(),
-                                contentDescription = "Detected face",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Possible match: ${match.alert.childName}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                Text(
-                                    "${(match.confidence * 100).toInt()}% similarity",
-                                    color = PrimaryBlue,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Button(
-                                onClick = viewModel::dismiss,
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)
-                            ) {
-                                Text("Not a Match", color = Color.DarkGray)
-                            }
-                            Button(
-                                onClick = { showReview = true },
-                                modifier = Modifier.weight(1f).height(44.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = SafeGreen)
-                            ) {
-                                Text("Confirm Match")
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }
 
 /**
- * Full-screen side-by-side compare: the alert's original photo next to the
- * face actually captured by the camera, with the alert's details below, so
- * the volunteer makes the final call from evidence rather than the banner's
- * bare percentage.
+ * Popup shown the moment a face match is detected on the live camera feed:
+ * side-by-side compare of the alert's original photo against the face just
+ * captured, the alert's details below, and the similarity score — so the
+ * volunteer makes the final call from evidence, with the percentage surfaced
+ * only here rather than on the live camera view.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MatchReviewScreen(
+private fun MatchPopupDialog(
     alert: Alert,
     faceCrop: android.graphics.Bitmap,
     confidence: Float,
@@ -362,104 +292,104 @@ private fun MatchReviewScreen(
     onReject: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Confirm Sighting", fontWeight = FontWeight.SemiBold) },
-                navigationIcon = {
-                    IconButton(onClick = onReject) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+    Dialog(
+        onDismissRequest = onReject,
+        properties = DialogProperties(dismissOnClickOutside = false)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                Text("Possible Match Found", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Missing Child Photo", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        AsyncImage(
+                            model = alert.imageUrl,
+                            contentDescription = "Missing child photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Detected Face", fontSize = 12.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Image(
+                            bitmap = faceCrop.asImageBitmap(),
+                            contentDescription = "Detected face",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
+                        )
                     }
                 }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Uploaded Alert Photo", fontSize = 12.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    AsyncImage(
-                        model = alert.imageUrl,
-                        contentDescription = "Uploaded alert photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
-                    )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Similarity Score", fontWeight = FontWeight.Medium)
+                    Text("${(confidence * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = PrimaryBlue)
                 }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Detected Face", fontSize = 12.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Image(
-                        bitmap = faceCrop.asImageBitmap(),
-                        contentDescription = "Detected face",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
-                    )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    DetailRow("Child Name", alert.childName)
+                    DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}")
+                    DetailRow("Clothing", alert.clothingDesc)
+                    DetailRow("Last Seen", alert.lastSeen)
                 }
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                if (error != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(error, color = AlertRed, fontSize = 13.sp)
+                }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Similarity Score", fontWeight = FontWeight.Medium)
-                Text("${(confidence * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = PrimaryBlue)
-            }
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Column(modifier = Modifier.fillMaxWidth()) {
-                DetailRow("Child Name", alert.childName)
-                DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}")
-                DetailRow("Clothing", alert.clothingDesc)
-                DetailRow("Last Seen", alert.lastSeen)
-            }
-
-            if (error != null) {
+                Text(
+                    "Does this look like the missing child?",
+                    fontSize = 14.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(error, color = AlertRed, fontSize = 13.sp)
-            }
 
-            Spacer(modifier = Modifier.weight(1f))
-
-            Text(
-                "Does this look like the missing child?",
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Button(
-                    onClick = onReject,
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(25.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("Reject")
-                }
-                Button(
-                    onClick = onConfirm,
-                    modifier = Modifier.weight(1f).height(50.dp),
-                    shape = RoundedCornerShape(25.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SafeGreen)
-                ) {
-                    Text("Confirm Match")
+                    Button(
+                        onClick = onReject,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                    ) {
+                        Text("Reject")
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = RoundedCornerShape(25.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SafeGreen)
+                    ) {
+                        Text("Confirm Match")
+                    }
                 }
             }
         }

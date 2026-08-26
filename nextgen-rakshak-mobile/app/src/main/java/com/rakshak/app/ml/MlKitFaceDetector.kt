@@ -13,7 +13,13 @@ class MlKitFaceDetector : FaceDetector {
 
     private val detector = FaceDetection.getClient(
         FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            // ACCURATE trades some latency for noticeably better landmark/box
+            // precision than FAST. The scan loop is already single-flight
+            // (ScanViewModel's busy gate lets only one frame through at a time),
+            // so the extra cost per face is fine and a tighter box directly
+            // improves the embedding — MobileFaceNet is sensitive to how the
+            // face is framed going in.
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setMinFaceSize(0.1f)
             .build()
     )

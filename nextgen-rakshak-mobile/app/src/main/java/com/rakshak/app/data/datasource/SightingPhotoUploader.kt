@@ -2,6 +2,7 @@ package com.rakshak.app.data.datasource
 
 import android.graphics.Bitmap
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.tasks.await
 import java.io.ByteArrayOutputStream
 
@@ -18,7 +19,12 @@ class SightingPhotoUploader(private val storage: FirebaseStorage) {
             stream.toByteArray()
         }
         val ref = storage.reference.child("match_sightings/${alertId}_${System.currentTimeMillis()}.jpg")
-        ref.putBytes(bytes).await()
+        // storage.rules requires an image/* contentType on this path. putBytes()
+        // with no metadata defaults to application/octet-stream, which the rule
+        // rejects — the upload then silently fails and ReportMatchUseCase falls
+        // back to the alert's own photo, so the kiosk shows the same image twice.
+        val metadata = StorageMetadata.Builder().setContentType("image/jpeg").build()
+        ref.putBytes(bytes, metadata).await()
         return ref.downloadUrl.await().toString()
     }
 

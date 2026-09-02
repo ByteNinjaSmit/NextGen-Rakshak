@@ -444,6 +444,12 @@ class MeshNetworkManager(
         val firstSighting = seen.markIfNew(matchKey(report))
         if (firstSighting && selfOnline) _matches.tryEmit(RelayedMatch(report, messageId))
         if (!seen.markIfNew(messageId)) return
+        // Persist the dedup keys so a restart cannot re-process (and, if online,
+        // re-upload) a match packet that is still circulating.
+        scope.launch {
+            store?.saveSeen(messageId)
+            store?.saveSeen(matchKey(report))
+        }
         logLine("match ${report.alertId} received ttl=$ttl from $from")
         relay(raw, ttl, messageId, from)
     }

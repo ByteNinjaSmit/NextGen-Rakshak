@@ -85,6 +85,10 @@ object MeshPayloadCodec {
         // mesh packets reach any nearby device, and a parent's phone number is
         // not something to flood across a festival.
         out.writeUTF(alert.lastSeen)
+        // Scars / birthmarks / accessories — parent-provided distinguishing
+        // detail, and exactly what the offline confirmation dialog needs a human
+        // to check against.
+        out.writeUTF(alert.identifyingMarks)
         out.writeInt(alert.embedding.size)
         alert.embedding.forEach(out::writeFloat)
         out.writeLong(alert.timestamp)
@@ -106,6 +110,7 @@ object MeshPayloadCodec {
         out.writeUTF(report.imageUrl)
         out.writeUTF(report.volunteerId)
         out.writeUTF(report.volunteerRole)
+        out.writeUTF(report.volunteerName)
         out.writeFloat(report.confidence)
         out.writeDouble(report.latitude)
         out.writeDouble(report.longitude)
@@ -162,6 +167,7 @@ object MeshPayloadCodec {
                         val gender = input.readUTF()
                         val clothingDesc = input.readUTF()
                         val lastSeen = input.readUTF()
+                        val identifyingMarks = input.readUTF()
                         val embedding = FloatArray(input.readInt()) { input.readFloat() }
                         val timestamp = input.readLong()
                         val thumb = ByteArray(input.readInt()).also { input.readFully(it) }
@@ -174,6 +180,7 @@ object MeshPayloadCodec {
                                 gender = gender,
                                 clothingDesc = clothingDesc,
                                 lastSeen = lastSeen,
+                                identifyingMarks = identifyingMarks,
                                 embedding = embedding,
                                 timestamp = timestamp,
                                 thumbnail = thumb.takeIf { it.isNotEmpty() },
@@ -188,6 +195,7 @@ object MeshPayloadCodec {
                             imageUrl = input.readUTF(),
                             volunteerId = input.readUTF(),
                             volunteerRole = input.readUTF(),
+                            volunteerName = input.readUTF(),
                             confidence = input.readFloat(),
                             latitude = input.readDouble(),
                             longitude = input.readDouble(),

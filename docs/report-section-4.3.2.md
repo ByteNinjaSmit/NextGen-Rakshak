@@ -36,29 +36,31 @@ dropped; this rejects packets from any device not running the official
 application and detects any corruption introduced on a relay.
 
 An alert packet contains the message UUID, the alert's short text fields (child
-name, age, gender, clothing description and last-seen location — the parent's
-contact number is deliberately excluded, as the mesh reaches any nearby device),
-a 512-byte MobileFaceNet embedding vector (128 four-byte Float32 values; the
-vector length is written on the wire, so a 512-dimension model also works without
-a format change), and a highly compressed 96 × 96-pixel JPEG thumbnail of the
-child's face (approximately 2–3 KB). The thumbnail is what allows a fully offline
-phone to render the parent's photograph in the side-by-side confirmation dialog,
-since the image URL carried for the online path cannot be fetched without
-internet. The complete packet remains well under the 32 KB Nearby Connections
-payload limit.
+name, age, gender, clothing description, identifying marks and last-seen
+location — the parent's contact number is deliberately excluded, as the mesh
+reaches any nearby device), a 512-byte MobileFaceNet embedding vector (128
+four-byte Float32 values; the vector length is written on the wire, so a
+512-dimension model also works without a format change), and a highly compressed
+96 × 96-pixel JPEG thumbnail of the child's face (approximately 2–3 KB, where the
+photograph was available when the alert entered the mesh). The thumbnail is what
+allows a fully offline phone to render the parent's photograph in the side-by-side
+confirmation dialog, since the image URL carried for the online path cannot be
+fetched without internet. The complete packet remains well under the 32 KB Nearby
+Connections payload limit.
 
 So that the mesh keeps operating while a volunteer walks the crowd with the phone
 in a pocket, it is hosted in an Android foreground service rather than tied to the
 screen being on. Confirmed-sighting reports are routed preferentially toward peers
 that have advertised internet access (exchanged in a short capability handshake on
 connection); the device that succeeds in uploading a sighting returns an
-acknowledgement along the mesh, and the originating device re-sends the report
-periodically until that acknowledgement arrives.
+acknowledgement along the mesh, and the originating device re-sends the report a
+few times until that acknowledgement arrives, falling back to its own upload queue
+if none does.
 
 Cosine similarity is used to compare face embeddings because it measures the angle
 between two vectors rather than their magnitude, making it robust to brightness
-variation. It yields an interpretable score between 0 (completely dissimilar) and
-1 (identical).
+variation. It yields an interpretable score that, for face embeddings, falls
+between 0 (completely dissimilar) and 1 (identical).
 
 ---
 
@@ -72,8 +74,9 @@ variation. It yields an interpretable score between 0 (completely dissimilar) an
 | TTL / embedding / expiry / cosine | implemented | unchanged, wording kept |
 | — (not mentioned) | new | HMAC-SHA256 authentication on every packet |
 | — | new | foreground service keeps the mesh alive when backgrounded |
-| — | new | gateway-preferred match routing + delivery acknowledgement + retry |
+| — | new | gateway-preferred match routing + delivery acknowledgement + bounded retry |
 | — | new | learned alerts / seen-IDs persisted across an app restart |
+| — | new | `identifyingMarks` on the alert wire and `volunteerName` on the match wire (both were being dropped) |
 
 Still described as future work in the report's limitations / future-scope
 section, not in §4.3.2: per-alert asymmetric (public-key) signing of alerts by

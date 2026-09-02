@@ -1,3 +1,6 @@
 <resources>
-    <color name="ic_launcher_background">#0F172A</color>
+    <!-- Adaptive-icon background: the light card behind the artwork. -->
+    <color name="ic_launcher_background">#F4F7FB</color>
+    <!-- Status-bar notification icon tint (brand blue). -->
+    <color name="notification_accent">#1E56D6</color>
 </resources>

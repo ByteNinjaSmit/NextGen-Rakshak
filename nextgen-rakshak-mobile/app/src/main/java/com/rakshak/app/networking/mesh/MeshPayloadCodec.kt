@@ -16,8 +16,10 @@ import java.io.DataOutputStream
  *
  * TTL is decremented at each relay ([withDecrementedTtl]) and a packet is no
  * longer re-broadcast once it reaches zero, capping how far a packet floods.
- * ~700 bytes for an alert (128-float embedding), well under the Nearby
- * Connections 32 KB BytesPayload limit.
+ * ~700 bytes for an alert with a 128-float embedding, ~2.7 KB with a 512-float
+ * one — both well under the Nearby Connections 32 KB BytesPayload limit. The
+ * embedding length is written on the wire and read back, so either model works
+ * without a format change.
  */
 object MeshPayloadCodec {
 

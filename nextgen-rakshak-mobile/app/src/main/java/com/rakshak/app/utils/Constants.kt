@@ -4,23 +4,60 @@ package com.rakshak.app.utils
 object Constants {
     // ML
     const val MODEL_ASSET = "mobilefacenet.tflite"
-    const val FACE_INPUT_SIZE = 112       // MobileFaceNet input is 112x112
-    const val EMBEDDING_SIZE = 128
+    const val FACE_INPUT_SIZE = 112       // MobileFaceNet / ArcFace input is 112x112
+
+    /**
+     * Expected embedding length. 128 for the original MobileFaceNet, 512 for the
+     * ArcFace-trained upgrade (`w600k_mbf` / EdgeFace — see scripts/README.md).
+     * This is a sanity bound only: [com.rakshak.app.ml.TFLiteEmbeddingExtractor]
+     * reads the real length from the model's output tensor at load time, and the
+     * comparator works off `FloatArray.size`, so nothing breaks if the shipped
+     * model has a different width — the assertion just catches a wrong asset.
+     */
+    val SUPPORTED_EMBEDDING_SIZES = intArrayOf(128, 512)
+
     /**
      * Cosine similarity above which a face is treated as a candidate match.
      *
-     * Set from measurement, not from the literature. Across 36 real photo pairs
-     * run through this exact model, same-person scores spanned 0.7142–0.9899 and
-     * different-person scores spanned 0.0864–0.3551. The original 0.75 sat inside
-     * the same-person range and missed 5 of 15 genuine pairs; 0.55 sits in the
-     * empty gap between the two groups and classifies all 36 correctly.
+     * Set from measurement, not from the literature. With the original
+     * MobileFaceNet, across 36 real photo pairs, same-person scores spanned
+     * 0.7142–0.9899 and different-person scores 0.0864–0.3551; 0.55 sits in the
+     * empty gap. After ANY change to the model, the alignment, or the precision,
+     * this MUST be re-measured with `scripts/evaluate_model.py`, which prints the
+     * separating band and a suggested threshold — the ArcFace upgrade shifts the
+     * same-person band lower (~0.28–0.45 typical).
      *
      * Lower is the safer error here: a missed child is the failure the system
      * exists to prevent, while a false candidate costs only the moment a
      * volunteer takes to tap "Not a match" — every match is human-confirmed.
-     * See scripts/README.md for the measurements.
      */
     const val SIMILARITY_THRESHOLD = 0.55f
+
+    /**
+     * Frames of the same tracked face whose embeddings are averaged before a
+     * match is surfaced. Averaging L2-normalised embeddings suppresses
+     * per-frame detector jitter and motion blur, widening the gap between a true
+     * and a false candidate. Kept small so a real match still appears within
+     * about a second of the child entering view.
+     */
+    const val EMBEDDING_FUSION_FRAMES = 3
+
+    /**
+     * A single frame scoring at least this is surfaced immediately without
+     * waiting for [EMBEDDING_FUSION_FRAMES] — a very confident hit should not be
+     * delayed. Must sit comfortably above [SIMILARITY_THRESHOLD]; re-tune
+     * alongside it.
+     */
+    const val STRONG_MATCH_THRESHOLD = 0.72f
+
+    // --- Quality gate (com.rakshak.app.ml.ImageQuality) ---
+    /** Minimum face box side in the camera frame, in pixels. */
+    const val MIN_FACE_PX = 90
+    /** Mean-luminance window (0..255) the aligned tile must fall inside. */
+    const val MIN_FACE_LUMA = 40f
+    const val MAX_FACE_LUMA = 235f
+    /** Minimum variance-of-Laplacian on the aligned tile; below this it is blurred. */
+    const val MIN_SHARPNESS_VAR = 60f
 
     /**
      * Head-pose limits for discarding non-frontal faces before embedding.

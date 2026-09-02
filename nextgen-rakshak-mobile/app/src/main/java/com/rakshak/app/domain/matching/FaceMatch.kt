@@ -10,4 +10,6 @@ data class FaceMatch(
     val boundingBox: Rect,
     /** The matched face cropped from the live frame, shown beside the parent's photo. */
     val faceCrop: Bitmap,
+    /** How many frames of this track were averaged into the matched embedding. */
+    val framesFused: Int = 1,
 )

@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 INPUT_SIZE = 112
-EMBEDDING_SIZE = 128
+SUPPORTED_EMBEDDING_SIZES = (128, 512)  # MobileFaceNet / ArcFace
 
 
 def main() -> None:
@@ -49,10 +49,9 @@ def main() -> None:
     probe = fn(tf.constant(np.zeros((1, INPUT_SIZE, INPUT_SIZE, 3), np.float32)))
     print(f"  output shape: {tuple(probe.shape)}")
     print(f"  output L2 norm: {float(np.linalg.norm(probe.numpy())):.6f}")
-    if probe.shape[-1] != EMBEDDING_SIZE:
+    if probe.shape[-1] not in SUPPORTED_EMBEDDING_SIZES:
         print(
-            f"ERROR: expected a {EMBEDDING_SIZE}-d embedding, got {probe.shape[-1]}. "
-            "The rest of the system assumes 128.",
+            f"ERROR: expected a {SUPPORTED_EMBEDDING_SIZES}-d embedding, got {probe.shape[-1]}.",
             file=sys.stderr,
         )
         sys.exit(1)

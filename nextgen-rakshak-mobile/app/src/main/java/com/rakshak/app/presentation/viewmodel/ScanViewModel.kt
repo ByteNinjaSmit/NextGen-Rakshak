@@ -113,6 +113,7 @@ class ScanViewModel(
                     _error.value = null
                     _reported.value = true
                     _pending.value = null
+                    matcher.reset()
                 }
                 .onFailure {
                     // Keep the match on screen so Confirm can simply be retried.
@@ -125,6 +126,14 @@ class ScanViewModel(
     fun dismiss() {
         _pending.value = null
         _error.value = null
+        // Drop per-track embedding history so a "Not a match" dismissal does not
+        // immediately re-fire on the same accumulated frames.
+        matcher.reset()
+    }
+
+    override fun onCleared() {
+        matcher.reset()
+        super.onCleared()
     }
 
     private companion object {

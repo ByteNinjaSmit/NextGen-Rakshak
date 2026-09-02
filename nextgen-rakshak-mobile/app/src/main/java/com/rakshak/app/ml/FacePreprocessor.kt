@@ -1,27 +1,63 @@
 package com.rakshak.app.ml
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Rect
 import androidx.core.graphics.scale
 import com.rakshak.app.utils.Constants
 
-/** Crops a detected face out of a frame and resizes it to the model input size. */
+/** Turns a detected face into the model's 112x112 input tile. */
 object FacePreprocessor {
 
+    private val alignPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
+
     /**
-     * Crops the face to the model input.
+     * Produce the model input tile for [face].
      *
-     * The crop is a **square centred on the detector box**, not the raw box. Two
-     * reasons, both of which affect whether a true match clears the similarity threshold:
+     * Preferred path: a **5-point similarity alignment** that warps the eyes,
+     * nose and mouth corners onto MobileFaceNet's canonical template
+     * ([FaceGeometry.TEMPLATE_112]). This removes in-plane rotation and scale
+     * variation the model was never trained to ignore, and — critically — makes
+     * the phone and the server (`functions/src/embedding.ts`) frame the same
+     * child identically despite using different detectors.
      *
-     * 1. Squashing a non-square box into a square 112x112 input distorts the face
-     *    by a factor that depends on the box's aspect ratio.
-     * 2. The server computes the alert embedding with a different detector
-     *    (BlazeFace) whose boxes frame faces differently from ML Kit's. Deriving a
-     *    square from the box centre and size makes the two pipelines agree
-     *    geometrically instead of inheriting each detector's framing convention.
-     *
-     * Any change here must be mirrored in `functions/src/embedding.ts`.
+     * Fallback path (landmarks missing): the old behaviour — a square centred on
+     * the detector box, padded by [Constants.FACE_CROP_MARGIN], resized to the
+     * input size. Still mirrored by the server's fallback.
+     */
+    fun toModelInput(frame: Bitmap, face: DetectedFace): Bitmap {
+        val lm = face.landmarks
+        if (lm.canAlign) {
+            aligned(frame, lm)?.let { return it }
+        }
+        return cropAndResize(frame, face.boundingBox)
+    }
+
+    /** 112x112 tile warped so eyes+nose hit the canonical template. */
+    private fun aligned(frame: Bitmap, lm: FaceLandmarks): Bitmap? {
+        val size = Constants.FACE_INPUT_SIZE
+        // FaceGeometry's template is ordered [leftEye, rightEye, nose] purely by
+        // ascending x. ML Kit's LEFT_EYE / RIGHT_EYE are the *subject's* eyes,
+        // which land on either image side depending on whether the frame is
+        // mirrored — so ignore that label and order the eye pair by x. Head roll
+        // is already gated below 40 deg, well short of an x-order flip.
+        val eyes = listOf(lm.leftEye!!, lm.rightEye!!).sortedBy { it.x }
+        val n = lm.noseBase!!
+        val srcXY = floatArrayOf(eyes[0].x, eyes[0].y, eyes[1].x, eyes[1].y, n.x, n.y)
+
+        // Warp maps image -> template, for Canvas.drawBitmap(src, matrix).
+        val matrix = FaceGeometry.similarityMatrix(srcXY, FaceGeometry.template(size)) ?: return null
+
+        val out = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        Canvas(out).drawBitmap(frame, matrix, alignPaint)
+        return out
+    }
+
+    /**
+     * Square crop centred on [box], padded by [Constants.FACE_CROP_MARGIN],
+     * resized to the model input. Kept for the no-landmark fallback and for
+     * tests. MUST stay geometrically identical to the server's fallback crop.
      */
     fun cropAndResize(frame: Bitmap, box: Rect): Bitmap {
         val square = squareAround(frame, box, Constants.FACE_CROP_MARGIN)
@@ -42,7 +78,7 @@ object FacePreprocessor {
 
     /**
      * Crops the face for on-screen display next to the parent-submitted photo.
-     * Unlike [cropAndResize] this keeps the native resolution (so it isn't a
+     * Unlike [toModelInput] this keeps the native resolution (so it isn't a
      * pixelated 112x112) and adds margin around the box so the volunteer sees
      * hair and chin, not just the bare face rectangle.
      */

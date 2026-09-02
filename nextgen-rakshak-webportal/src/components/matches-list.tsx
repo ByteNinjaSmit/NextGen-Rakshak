@@ -26,6 +26,11 @@ function mapsUrl(match: Match) {
   return `https://www.google.com/maps?q=${latitude},${longitude}`;
 }
 
+/** Absent `hasLocation` means the match predates the field — treat as located. */
+function hasUsableLocation(match: Match) {
+  return match.hasLocation !== false;
+}
+
 const statusVariant: Record<MatchStatus, BadgeProps["variant"]> = {
   pending: "secondary",
   dispatched: "success",
@@ -130,12 +135,23 @@ export function MatchesList() {
                       <Button size="sm" variant="outline" onClick={() => setSelectedMatch(match)}>
                         Review
                       </Button>
-                      <Button size="sm" asChild onClick={() => markDispatched(match)}>
-                        <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
+                      {hasUsableLocation(match) ? (
+                        <Button size="sm" asChild onClick={() => markDispatched(match)}>
+                          <a href={mapsUrl(match)} target="_blank" rel="noopener noreferrer">
+                            <Navigation className="h-4 w-4" />
+                            Dispatch
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => markDispatched(match)}
+                          title="Volunteer had no GPS fix — no map location for this sighting"
+                        >
                           <Navigation className="h-4 w-4" />
-                          Dispatch
-                        </a>
-                      </Button>
+                          Dispatch (no location)
+                        </Button>
+                      )}
                     </div>
                     {failed.includes(match.id) && (
                       <button

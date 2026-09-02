@@ -11,6 +11,11 @@ data class MatchReport(
     val confidence: Float,
     val latitude: Double,
     val longitude: Double,
+    /**
+     * False when no GPS fix was available at confirmation time — [latitude] and
+     * [longitude] are then `0.0` and the kiosk must not drop a map pin on them.
+     */
+    val hasLocation: Boolean = true,
 )
 
 /** Where the kiosk currently stands on a reported sighting. */

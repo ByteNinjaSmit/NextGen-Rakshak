@@ -23,11 +23,13 @@ import com.rakshak.app.utils.Constants
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
@@ -99,6 +101,15 @@ class MeshNetworkManager(
     private data class PendingSend(val bytes: ByteArray, val endpointId: String, val attempts: Int)
     private val pendingSends = ConcurrentHashMap<Long, PendingSend>()
 
+    /**
+     * Match packets this device originated that have not yet been ACKed by an
+     * online peer. Keyed by the packet's message id. Re-sent on a timer until an
+     * ACK arrives, this device itself comes online, or the attempt budget runs
+     * out — at which point the origin's Room queue is still the safety net.
+     */
+    private data class PendingMatchAck(val bytes: ByteArray, val attempts: Int)
+    private val pendingMatchAcks = ConcurrentHashMap<String, PendingMatchAck>()
+
     private val _alerts = MutableStateFlow<List<Alert>>(emptyList())
     /** Every unexpired alert this device has heard over the mesh. */
     val alerts: StateFlow<List<Alert>> = _alerts.asStateFlow()
@@ -126,6 +137,9 @@ class MeshNetworkManager(
                 flow.collect { online ->
                     val changed = online != selfOnline
                     selfOnline = online
+                    // This device can now upload its own queued matches (Room +
+                    // MatchSyncWorker); stop chasing mesh ACKs for them.
+                    if (changed && online) pendingMatchAcks.clear()
                     if (changed && running) broadcastHello()
                 }
             }
@@ -154,6 +168,7 @@ class MeshNetworkManager(
         connected.clear()
         onlinePeers.clear()
         pendingSends.clear()
+        pendingMatchAcks.clear()
         _peerCount.value = 0
         logLine("mesh stopped")
     }
@@ -212,18 +227,49 @@ class MeshNetworkManager(
         }
     }
 
-    /** Relay a match report toward a connected online peer (or flood if none is). */
+    /**
+     * Relay a match report toward a connected online peer (or flood if none is),
+     * then chase an ACK: re-send on a timer until an online peer confirms it
+     * uploaded the sighting, this device comes online, or the attempt budget
+     * runs out. The origin device's Room queue is the backstop the whole time.
+     */
     fun relayMatch(report: MatchReport) {
+        if (!running) return // mesh is down; the Room queue + MatchSyncWorker own it
         val messageId = MeshPayloadCodec.newMessageId()
         seen.markIfNew(messageId)
         seen.markIfNew(matchKey(report))
+        val bytes = MeshPayloadCodec.encode(report, messageId)
         val targets = MeshRouter.matchTargets(connectedSnapshot(), onlinePeersSnapshot(), exclude = null)
-        sendBytes(MeshPayloadCodec.encode(report, messageId), targets)
-        logLine("relay match ${report.alertId} -> ${targets.size} peer(s)")
+        sendBytes(bytes, targets)
+        pendingMatchAcks[messageId] = PendingMatchAck(bytes, attempts = 0)
+        scheduleMatchAckRetry(messageId)
+        logLine("relay match ${report.alertId} msg=$messageId -> ${targets.size} peer(s)")
+    }
+
+    private fun scheduleMatchAckRetry(messageId: String) {
+        scope.launch {
+            delay(MATCH_ACK_TIMEOUT_MS)
+            val pending = pendingMatchAcks[messageId] ?: return@launch // ACKed or cleared
+            if (selfOnline) {
+                pendingMatchAcks.remove(messageId)
+                return@launch
+            }
+            if (pending.attempts >= MAX_MATCH_ACK_ATTEMPTS) {
+                pendingMatchAcks.remove(messageId)
+                logLine("match msg=$messageId unacked after $MAX_MATCH_ACK_ATTEMPTS tries; left to the Room queue")
+                return@launch
+            }
+            pendingMatchAcks[messageId] = pending.copy(attempts = pending.attempts + 1)
+            val targets = MeshRouter.matchTargets(connectedSnapshot(), onlinePeersSnapshot(), exclude = null)
+            sendBytes(pending.bytes, targets)
+            logLine("match msg=$messageId resend (attempt ${pending.attempts + 2}) -> ${targets.size} peer(s)")
+            scheduleMatchAckRetry(messageId)
+        }
     }
 
     /** Called by the uploader bridge once a mesh-relayed match is safely in Firestore. */
     fun ackMatch(messageId: String) {
+        if (!running) return
         val ackId = MeshPayloadCodec.newMessageId()
         seen.markIfNew(ackId)
         sendBytes(MeshPayloadCodec.encodeAck(messageId, ackId), MeshRouter.broadcastTargets(connectedSnapshot(), null))
@@ -344,7 +390,12 @@ class MeshNetworkManager(
                     logLine("hello from $endpointId, internet=${msg.hasInternet}")
                 }
                 is MeshMessage.AckMessage -> {
-                    logLine("ack received for msg=${msg.ackFor}")
+                    if (!seen.markIfNew(envelope.messageId)) return
+                    if (pendingMatchAcks.remove(msg.ackFor) != null) {
+                        logLine("match msg=${msg.ackFor} delivery confirmed")
+                    } else {
+                        logLine("ack for msg=${msg.ackFor} (passing through)")
+                    }
                     relay(bytes, envelope.ttl, envelope.messageId, endpointId)
                 }
             }
@@ -464,7 +515,7 @@ class MeshNetworkManager(
     private fun logLine(line: String) {
         val stamped = "${System.currentTimeMillis()} $line"
         Log.i(TAG, line)
-        _log.value = (_log.value + stamped).takeLast(LOG_CAP)
+        _log.update { (it + stamped).takeLast(LOG_CAP) }
     }
 
     companion object {
@@ -474,5 +525,7 @@ class MeshNetworkManager(
         private const val RESOLVE_OUT = "out-resolve:"
         private const val LOG_CAP = 200
         private const val MAX_SEND_ATTEMPTS = 2
+        private const val MATCH_ACK_TIMEOUT_MS = 15_000L
+        private const val MAX_MATCH_ACK_ATTEMPTS = 3
     }
 }

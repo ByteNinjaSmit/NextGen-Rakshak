@@ -31,6 +31,9 @@ class FirestoreMatchSource(
             put("volunteerRole", report.volunteerRole)
             put("confidence", report.confidence)
             put("location", GeoPoint(report.latitude, report.longitude))
+            // False when the volunteer had no GPS fix; the kiosk shows "location
+            // unavailable" instead of dropping a pin on 0,0 (null island).
+            put("hasLocation", report.hasLocation)
             put("status", "pending")
             put("timestamp", FieldValue.serverTimestamp())
 

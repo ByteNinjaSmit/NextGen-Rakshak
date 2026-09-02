@@ -63,17 +63,28 @@ rejection, HELLO/ACK), `MeshCryptoTest`, `MeshSeenCacheTest` (eviction, restore)
 - **`pendingSends` leak.** A peer that vanishes never reports SUCCESS/FAILURE for
   its in-flight payloads. `dropEndpoint()` now clears them on disconnect / lost.
 
-## Still open (documented limitations / future work)
+## Third pass — remaining gap fills
 
-- No **application-level ACK retry timer** — a lost ACK does not re-send the match
-  (it still floods toward every gateway, so delivery is not lost, only the "stop
-  carrying it" signal). The Room queue on the origin device is the real safety net.
-- Per-alert **asymmetric signing** by the kiosk (see MeshCrypto limitation above).
-- Not yet exercised across **≥3 physical devices** (VER-08) — the instrumentation
-  above exists to make that trial measurable.
-- Nearby needs device **Location Services** on (not just the permission) on many
-  OEMs; the app does not yet surface that.
-- Concurrent `logLine()` calls do a non-atomic read-modify-write on the log
-  StateFlow — a debug line can be dropped under load. Cosmetic (debug screen only).
-- `MatchReport` lat/long default to `0.0` when there is no GPS fix (pre-existing,
-  not mesh-specific).
+| Was open | Now |
+|---|---|
+| No ACK retry timer | `MeshNetworkManager.scheduleMatchAckRetry` — the origin re-sends the match packet every 15 s (same message id) to whatever gateway peers are connected, up to 3 attempts. Cleared on an ACK, or when the origin itself comes online (it can upload from Room then). ACK packets now carry their own seen-id dedup so a receipt cannot loop. |
+| Location Services (not permission) | `LocationServices.enabled()` — the mesh debug screen shows a red banner with a "Turn on" shortcut to `ACTION_LOCATION_SOURCE_SETTINGS` when the system toggle is off. |
+| `logLine()` non-atomic write | now `_log.update { … }`. |
+| `MatchReport` lat/long `0.0` on no fix | `MatchReport.hasLocation` flows through the mesh wire, Room (`AppDatabase` v3→v4), and Firestore. The kiosk (`matches-list.tsx`) renders **"Dispatch (no location)"** without a Maps link when it is false, instead of a pin on 0,0. |
+
+## Still open (formal descope + hardware)
+
+- **Per-alert asymmetric signing by the kiosk** — *descoped, documented as future
+  work* (plan GAP-02 explicitly permits "implement HMAC **or** a written
+  descope"). Doing it properly needs an Ed25519 keypair generated at deploy time,
+  the private half in a Cloud Function that has never been deployed, the public
+  half pinned in the app, a canonical serialization shared by
+  `functions/src/embedding.ts` and `MeshPayloadCodec`, and a crypto dependency
+  (`java.security` Ed25519 is API 33+, below `minSdk 24`, so Tink or
+  BouncyCastle). The shipped HMAC already blocks packets from any build that does
+  not hold the key and catches tampering/corruption on a relay; the residual gap
+  — a modified copy of the *official* app — is the one only per-alert asymmetric
+  signing closes, and it is not reachable without the backend deploy landing
+  first.
+- **≥3-device field trial (VER-08)** — needs hardware. The debug screen's
+  timestamped packet log exists to make hop timing measurable when it runs.

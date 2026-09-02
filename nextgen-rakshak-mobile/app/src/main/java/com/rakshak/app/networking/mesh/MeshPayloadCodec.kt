@@ -109,6 +109,7 @@ object MeshPayloadCodec {
         out.writeFloat(report.confidence)
         out.writeDouble(report.latitude)
         out.writeDouble(report.longitude)
+        out.writeBoolean(report.hasLocation)
     }
 
     /** Encode a "case closed" packet for [alertId]. */
@@ -190,6 +191,7 @@ object MeshPayloadCodec {
                             confidence = input.readFloat(),
                             latitude = input.readDouble(),
                             longitude = input.readDouble(),
+                            hasLocation = input.readBoolean(),
                         )
                     )
 

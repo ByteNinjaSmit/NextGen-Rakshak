@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldAlert, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { BrandLockup } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -88,8 +89,8 @@ export function LoginScreen() {
     <div className="flex min-h-screen animate-in fade-in items-center justify-center bg-muted/30 p-6 duration-300">
       <Card className="w-full max-w-sm">
         <CardHeader className="items-center text-center">
-          <ShieldAlert className="mb-2 h-10 w-10 text-primary" />
-          <CardTitle className="text-xl">Rakshak Police Kiosk</CardTitle>
+          <BrandLockup width={200} className="mb-2" />
+          <CardTitle className="text-xl">Police Kiosk</CardTitle>
           <CardDescription>
             {needsRetry
               ? `Signed in as ${user?.email ?? "this account"}, but it is not registered as a police account yet.`

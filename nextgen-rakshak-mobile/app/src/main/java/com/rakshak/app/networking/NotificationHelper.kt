@@ -37,7 +37,8 @@ object NotificationHelper {
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_rakshak)
+            .setColor(context.getColor(R.color.notification_accent))
             .setContentTitle("Child Missing — Tap to Scan")
             .setContentText("Searching for $childName. Tap to help.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

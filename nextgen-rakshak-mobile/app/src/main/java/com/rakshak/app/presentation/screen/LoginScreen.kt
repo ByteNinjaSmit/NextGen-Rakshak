@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rakshak.app.R
 import com.rakshak.app.presentation.theme.PrimaryBlue
 
 private val ROLES = listOf("police", "ncc", "ngo", "community")
@@ -112,7 +113,13 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (!registerMode) {
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(32.dp))
+                Image(
+                    painter = painterResource(id = R.drawable.rakshak_logo),
+                    contentDescription = "NextGen Rakshak",
+                    modifier = Modifier.height(132.dp),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
                 // Login Header
                 Text(
                     "Welcome Back!",

@@ -8,11 +8,11 @@ import {
   LayoutDashboard,
   PlusCircle,
   MapPin,
-  ShieldAlert,
   LogOut,
   Loader2,
   UserCog,
 } from "lucide-react";
+import { BrandMark } from "@/components/brand-logo";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/components/auth-provider";
 import { signOutUser } from "@/lib/auth";
@@ -45,8 +45,8 @@ export function SidebarNav() {
 
   return (
     <aside className="flex w-64 shrink-0 flex-col bg-[#0b1e3f] text-slate-200">
-      <div className="flex items-center gap-2 border-b border-white/10 px-6 py-5">
-        <ShieldAlert className="h-6 w-6 text-white" />
+      <div className="flex items-center gap-3 border-b border-white/10 px-6 py-5">
+        <BrandMark size={36} className="rounded-lg bg-white/95 p-1" />
         <div>
           <p className="text-lg font-bold leading-tight text-white">Rakshak</p>
           <p className="text-xs text-slate-400">Police Kiosk</p>

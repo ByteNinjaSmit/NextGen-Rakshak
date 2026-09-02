@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth-provider";
@@ -11,6 +11,13 @@ export const metadata: Metadata = {
     template: "%s · Rakshak",
   },
   description: "Edge-AI lost-child recovery system for mass gatherings",
+  manifest: "/manifest.webmanifest",
+};
+// Favicon / apple-icon come from the src/app/{icon,apple-icon} files (Next.js
+// file convention). PWA icons are declared in /public/manifest.webmanifest.
+
+export const viewport: Viewport = {
+  themeColor: "#0E2A66",
 };
 
 /**

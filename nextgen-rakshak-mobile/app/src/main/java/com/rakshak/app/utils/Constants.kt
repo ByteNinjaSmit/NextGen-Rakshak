@@ -89,4 +89,23 @@ object Constants {
     const val MESH_INITIAL_TTL = 6
     /** Alerts older than this are considered expired and are neither matched nor relayed. */
     const val ALERT_EXPIRY_MILLIS = 8L * 60 * 60 * 1000 // 8 hours (matches FR-12)
+
+    /**
+     * Seen-message-id entries older than this are evicted from [com.rakshak.app
+     * .networking.mesh.MeshSeenCache]. Tied to the alert lifetime: once a packet's
+     * parent alert can no longer be relayed, remembering its id serves no purpose.
+     * This is what makes the duplicate-suppression set "short-lived" rather than a
+     * set that grows for the length of a multi-day event.
+     */
+    const val MESH_SEEN_TTL_MILLIS = ALERT_EXPIRY_MILLIS
+
+    /**
+     * Face thumbnail carried inside an alert packet so an offline device can render
+     * the parent's photo in the side-by-side match dialog (FR-07) with no internet.
+     * A 96x96 JPEG at quality ~40 is 2-3 KB; the cap rejects anything that would
+     * bloat the packet toward the 32 KB Nearby BytesPayload limit.
+     */
+    const val MESH_THUMBNAIL_SIZE_PX = 96
+    const val MESH_THUMBNAIL_JPEG_QUALITY = 40
+    const val MESH_THUMBNAIL_MAX_BYTES = 8 * 1024
 }

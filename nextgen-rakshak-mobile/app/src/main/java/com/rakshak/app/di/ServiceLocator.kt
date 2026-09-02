@@ -10,6 +10,7 @@ import com.rakshak.app.data.datasource.FirestoreAlertSource
 import com.rakshak.app.data.datasource.FirestoreMatchSource
 import com.rakshak.app.data.datasource.FirestoreVolunteerSource
 import com.rakshak.app.data.datasource.MeshAlertSource
+import com.rakshak.app.data.datasource.MeshStore
 import com.rakshak.app.data.datasource.SightingPhotoUploader
 import com.rakshak.app.data.local.AppDatabase
 import com.rakshak.app.data.local.VolunteerStore
@@ -24,6 +25,7 @@ import com.rakshak.app.domain.matching.FaceMatcher
 import com.rakshak.app.domain.usecase.ReportMatchUseCase
 import com.rakshak.app.ml.MlKitFaceDetector
 import com.rakshak.app.ml.TFLiteEmbeddingExtractor
+import com.rakshak.app.networking.ConnectivityMonitor
 import com.rakshak.app.networking.FcmTokenProvider
 import com.rakshak.app.networking.mesh.MeshNetworkManager
 import com.rakshak.app.utils.LocationProvider
@@ -43,11 +45,25 @@ object ServiceLocator {
     fun auth(): AuthService = authService
 
     @Volatile
+    private var connectivityInstance: ConnectivityMonitor? = null
+
+    /** Singleton connectivity monitor — one network callback shared app-wide. */
+    fun connectivityMonitor(context: Context): ConnectivityMonitor =
+        connectivityInstance ?: synchronized(this) {
+            connectivityInstance ?: ConnectivityMonitor(context.applicationContext)
+                .also { it.start(); connectivityInstance = it }
+        }
+
+    @Volatile
     private var meshInstance: MeshNetworkManager? = null
 
     /** Singleton mesh manager — one radio connection shared app-wide. */
     fun mesh(context: Context): MeshNetworkManager = meshInstance ?: synchronized(this) {
-        meshInstance ?: MeshNetworkManager(context.applicationContext).also { meshInstance = it }
+        meshInstance ?: MeshNetworkManager(
+            context.applicationContext,
+            store = MeshStore(AppDatabase.get(context).meshDao()),
+            connectivity = connectivityMonitor(context).online,
+        ).also { meshInstance = it }
     }
 
     fun alertRepository(context: Context): AlertRepository =

@@ -320,7 +320,10 @@ private fun MatchPopupDialog(
                         Text("Missing Child Photo", fontSize = 12.sp, color = Color.Gray)
                         Spacer(modifier = Modifier.height(6.dp))
                         AsyncImage(
-                            model = alert.imageUrl,
+                            // Prefer the mesh thumbnail bytes: on an offline phone
+                            // imageUrl cannot be fetched, and the thumbnail is the
+                            // only way this side-by-side compare shows a face.
+                            model = alert.thumbnail ?: alert.imageUrl,
                             contentDescription = "Missing child photo",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)

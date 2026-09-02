@@ -22,6 +22,10 @@
     <!-- Buzz the volunteer on a candidate match; they are watching the crowd, not the screen. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Keep the offline mesh relaying while the app is backgrounded / screen locked -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <uses-feature android:name="android.hardware.camera.any" android:required="true" />
 
     <!--
@@ -56,6 +60,11 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <service
+            android:name=".networking.mesh.MeshService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
     </application>
 </manifest>

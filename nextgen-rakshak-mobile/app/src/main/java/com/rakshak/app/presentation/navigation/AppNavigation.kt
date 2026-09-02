@@ -30,9 +30,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.rakshak.app.di.ServiceLocator
 import com.rakshak.app.presentation.screen.HomeScreen
 import com.rakshak.app.presentation.screen.LoginScreen
 import com.rakshak.app.presentation.screen.MatchesScreen
+import com.rakshak.app.presentation.screen.MeshDebugScreen
 import com.rakshak.app.presentation.screen.ProfileScreen
 import com.rakshak.app.presentation.screen.ScanScreen
 import com.rakshak.app.presentation.viewmodel.HomeViewModel
@@ -47,6 +49,7 @@ object Routes {
     const val SCAN = "scan"
     const val MATCHES = "matches"
     const val PROFILE = "profile"
+    const val MESH = "mesh"
 }
 
 @Composable
@@ -178,7 +181,18 @@ fun AppNavigation() {
             }
 
             composable(Routes.PROFILE) {
-                ProfileScreen(volunteer = volunteer, onSignOut = loginViewModel::signOut)
+                ProfileScreen(
+                    volunteer = volunteer,
+                    onSignOut = loginViewModel::signOut,
+                    onOpenMesh = { navController.navigate(Routes.MESH) },
+                )
+            }
+
+            composable(Routes.MESH) {
+                MeshDebugScreen(
+                    mesh = ServiceLocator.mesh(context),
+                    onBack = { navController.popBackStack() },
+                )
             }
         }
     }

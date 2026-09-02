@@ -24,7 +24,18 @@ class DefaultAlertRepository(
         combine(online.observeActiveAlerts(), mesh.observeActiveAlerts()) { onlineAlerts, meshAlerts ->
             val byId = LinkedHashMap<String, Alert>()
             meshAlerts.forEach { byId[it.id] = it }
-            onlineAlerts.forEach { byId[it.id] = it } // online overrides mesh copy
+            onlineAlerts.forEach { onlineAlert ->
+                // Online copy wins, but keep the mesh copy's thumbnail if the
+                // online one has none — so a device that goes offline mid-event
+                // can still render the parent's photo in the match dialog.
+                val meshThumb = byId[onlineAlert.id]?.thumbnail
+                byId[onlineAlert.id] =
+                    if (onlineAlert.thumbnail == null && meshThumb != null) {
+                        onlineAlert.copy(thumbnail = meshThumb)
+                    } else {
+                        onlineAlert
+                    }
+            }
             byId.values.toList()
         }
 }

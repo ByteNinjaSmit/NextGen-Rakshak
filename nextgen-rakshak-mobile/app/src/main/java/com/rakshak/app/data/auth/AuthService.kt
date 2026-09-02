@@ -35,9 +35,6 @@ interface AuthService {
      */
     fun uidFlow(): Flow<String?>
 
-    /** Ensure the device is authenticated (anonymous). Returns the uid. */
-    suspend fun ensureSignedIn(): String
-
     /**
      * Exchange a Google ID token for a Firebase session. Preferred over anonymous
      * sign-in because it ties a volunteer to a real, re-identifiable account —
@@ -79,12 +76,6 @@ class FirebaseAuthService(
         auth.addAuthStateListener(listener) // fires immediately with the current state
         awaitClose { auth.removeAuthStateListener(listener) }
     }.distinctUntilChanged()
-
-    override suspend fun ensureSignedIn(): String {
-        auth.currentUser?.let { return it.uid }
-        val result = auth.signInAnonymously().await()
-        return requireNotNull(result.user).uid
-    }
 
     override suspend fun signInWithGoogle(idToken: String): SignedInUser {
         val credential = GoogleAuthProvider.getCredential(idToken, null)

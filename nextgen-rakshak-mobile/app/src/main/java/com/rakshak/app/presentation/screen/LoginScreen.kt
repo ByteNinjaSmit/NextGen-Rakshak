@@ -68,7 +68,6 @@ private const val MIN_PASSWORD = 6
 fun LoginScreen(
     onGoogleSignIn: (role: String) -> Unit,
     onEmailSignIn: (email: String, password: String, role: String, register: Boolean) -> Unit,
-    onAnonymousSignIn: (phone: String, role: String) -> Unit,
     busy: Boolean = false,
     error: String? = null,
 ) {
@@ -77,7 +76,6 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var showPassword by remember { mutableStateOf(false) }
     var registerMode by remember { mutableStateOf(false) }
-    var showAnonymous by remember { mutableStateOf(false) }
     var phone by remember { mutableStateOf("") }
 
     // Extra fields for Register UI
@@ -338,33 +336,6 @@ fun LoginScreen(
                     shape = RoundedCornerShape(25.dp)
                 ) {
                     Text("Continue with Google")
-                }
-                
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Anonymous (demo)
-                if (!showAnonymous) {
-                    TextButton(onClick = { showAnonymous = true }) {
-                        Text("Continue as guest (demo)")
-                    }
-                } else {
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
-                        label = { Text("Phone number") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    OutlinedButton(
-                        onClick = { onAnonymousSignIn(phone.trim(), role) },
-                        enabled = phone.isNotBlank() && !busy,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(50.dp),
-                        shape = RoundedCornerShape(25.dp)
-                    ) {
-                        Text("Continue as guest")
-                    }
                 }
             }
         }

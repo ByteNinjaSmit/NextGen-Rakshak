@@ -18,9 +18,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * Sign-in: captures phone + role, signs the device in anonymously (so Firestore
- * writes satisfy `request.auth != null`), and registers the volunteer + FCM
- * token so they receive alert pushes. Volunteer id = anonymous uid.
+ * Sign-in: Google or email/password, captures role, and registers the volunteer
+ * + FCM token so they receive alert pushes. Volunteer id = Firebase uid.
  */
 class LoginViewModel(
     private val store: VolunteerStore,
@@ -100,23 +99,6 @@ class LoginViewModel(
                     name = user.displayName.orEmpty(),
                     email = user.email.orEmpty(),
                 )
-                rejectIfOfficer()
-                store.save(volunteer)
-                volunteers.register(volunteer) // best-effort FCM registration
-            }.onFailure { _error.value = it.message ?: "Sign-in failed" }
-            _busy.value = false
-        }
-    }
-
-    /** Demo fallback: anonymous account, no verified identity. */
-    fun signIn(phone: String, role: String) {
-        if (_busy.value) return
-        viewModelScope.launch {
-            _busy.value = true
-            _error.value = null
-            runCatching {
-                val uid = authService.ensureSignedIn()
-                val volunteer = Volunteer(id = uid, phone = phone, role = role)
                 rejectIfOfficer()
                 store.save(volunteer)
                 volunteers.register(volunteer) // best-effort FCM registration

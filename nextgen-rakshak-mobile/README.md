@@ -43,7 +43,12 @@ com.rakshak.app/
     an offline phone renders the parent's photo in the match dialog (FR-07).
   - **Gateway-aware match routing:** peers exchange a HELLO with an "I have internet"
     bit; match reports are sent to online peers first, flooded otherwise. The
-    online device uploads the match and sends an ACK back along the mesh.
+    online device uploads the match and sends an ACK back along the mesh; the
+    origin re-sends every 15 s (≤3 tries) until the ACK arrives or it comes online.
+  - `MatchReport.hasLocation` rides the wire — the kiosk shows "no location" rather
+    than a pin on 0,0 when the volunteer had no GPS fix.
+  - Mesh debug screen warns (with a settings shortcut) when the device's **Location**
+    toggle is off — Nearby discovery needs it even with the permission granted.
   - **Foreground service** (`MeshService`, `connectedDevice` type) keeps the mesh
     relaying when the app is backgrounded / screen locked; a low-priority
     notification shows the live peer count and a Stop action.

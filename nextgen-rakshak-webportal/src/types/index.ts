@@ -93,6 +93,12 @@ export interface Match {
    */
   relayedBy?: string;
   location: GeoPoint;
+  /**
+   * False when the volunteer had no GPS fix — `location` is then `0,0` and must
+   * not be turned into a map link. Absent on matches filed before this field
+   * existed; treat absent as `true`.
+   */
+  hasLocation?: boolean;
   confidence: number;
   status: MatchStatus;
   timestamp: Timestamp;

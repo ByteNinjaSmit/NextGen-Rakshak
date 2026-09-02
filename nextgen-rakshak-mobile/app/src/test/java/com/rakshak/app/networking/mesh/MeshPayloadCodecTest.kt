@@ -88,7 +88,7 @@ class MeshPayloadCodecTest {
         val report = MatchReport(
             alertId = "a1", childName = "Priya", imageUrl = "https://x/y.jpg",
             volunteerId = "v9", volunteerRole = "ncc", confidence = 0.87f,
-            latitude = 18.52, longitude = 73.85,
+            latitude = 18.52, longitude = 73.85, hasLocation = true,
         )
         val out = (MeshPayloadCodec.decode(MeshPayloadCodec.encode(report))!!
             .message as MeshMessage.MatchMessage).report
@@ -96,6 +96,19 @@ class MeshPayloadCodecTest {
         assertEquals(report.confidence, out.confidence, 1e-6f)
         assertEquals(report.latitude, out.latitude, 1e-9)
         assertEquals(report.longitude, out.longitude, 1e-9)
+        assertTrue(out.hasLocation)
+    }
+
+    @Test
+    fun match_carriesTheNoLocationFlag() {
+        val report = MatchReport(
+            alertId = "a1", childName = "Priya", imageUrl = "", volunteerId = "v9",
+            volunteerRole = "ncc", confidence = 0.5f, latitude = 0.0, longitude = 0.0,
+            hasLocation = false,
+        )
+        val out = (MeshPayloadCodec.decode(MeshPayloadCodec.encode(report))!!
+            .message as MeshMessage.MatchMessage).report
+        assertFalse(out.hasLocation)
     }
 
     @Test

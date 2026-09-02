@@ -17,6 +17,7 @@ data class PendingMatchEntity(
     val confidence: Float,
     val latitude: Double,
     val longitude: Double,
+    val hasLocation: Boolean = true,
 ) {
     fun toReport() = MatchReport(
         alertId = alertId,
@@ -28,6 +29,7 @@ data class PendingMatchEntity(
         confidence = confidence,
         latitude = latitude,
         longitude = longitude,
+        hasLocation = hasLocation,
     )
 
     companion object {
@@ -41,6 +43,7 @@ data class PendingMatchEntity(
             confidence = report.confidence,
             latitude = report.latitude,
             longitude = report.longitude,
+            hasLocation = report.hasLocation,
         )
     }
 }

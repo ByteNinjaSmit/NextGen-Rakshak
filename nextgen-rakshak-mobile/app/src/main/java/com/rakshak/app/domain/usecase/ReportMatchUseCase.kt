@@ -37,6 +37,7 @@ class ReportMatchUseCase(
                 confidence = confidence,
                 latitude = location?.latitude ?: 0.0,
                 longitude = location?.longitude ?: 0.0,
+                hasLocation = location != null,
             )
         )
     }

@@ -38,6 +38,7 @@ class ViewModelFactory(
                 matcher = ServiceLocator.faceMatcher(context),
                 reportMatch = ServiceLocator.reportMatchUseCase(context),
                 volunteer = current,
+                volunteerRepository = ServiceLocator.volunteerRepository(context),
             ) as T
         }
 

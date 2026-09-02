@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rakshak.app.networking.mesh.MeshNetworkManager
-import com.rakshak.app.utils.LocationServices
+import com.rakshak.app.utils.LocationSettings
 
 /**
  * Live view of the offline mesh: how many volunteers this device is linked to,
@@ -55,8 +55,8 @@ fun MeshDebugScreen(mesh: MeshNetworkManager, onBack: () -> Unit) {
     val listState = rememberLazyListState()
 
     // Re-checked whenever the screen is recomposed (e.g. returning from settings).
-    var locationOn by remember { mutableStateOf(LocationServices.enabled(context)) }
-    LaunchedEffect(Unit) { locationOn = LocationServices.enabled(context) }
+    var locationOn by remember { mutableStateOf(LocationSettings.enabled(context)) }
+    LaunchedEffect(Unit) { locationOn = LocationSettings.enabled(context) }
 
     LaunchedEffect(log.size) {
         if (log.isNotEmpty()) listState.animateScrollToItem(log.lastIndex)

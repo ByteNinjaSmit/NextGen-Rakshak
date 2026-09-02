@@ -5,6 +5,15 @@ import * as logger from "firebase-functions/logger";
 /** Geofence radius around the reporting kiosk (synopsis §2.1). */
 const GEOFENCE_RADIUS_KM = 2;
 
+/**
+ * A volunteer's `lastLocation` older than this is treated as unknown, so an
+ * out-of-range check on a stale fix cannot silently exclude a helper who has
+ * since travelled to the event. Volunteers refresh their position on opening
+ * Home and on starting a scan; six hours is comfortably longer than that gap
+ * for anyone actually near an alert.
+ */
+const STALE_LOCATION_MS = 6 * 60 * 60 * 1000;
+
 /** Great-circle distance between two lat/lng points, in kilometres. */
 function haversineKm(a: GeoPoint, b: GeoPoint): number {
   const R = 6371;
@@ -47,9 +56,14 @@ export async function broadcastAlert(
 
     if (origin) {
       const loc = doc.get("lastLocation");
-      // Only exclude when we KNOW the volunteer is out of range; missing/invalid
-      // location falls through and is notified (fail-open).
-      if (loc instanceof GeoPoint && haversineKm(origin, loc) > GEOFENCE_RADIUS_KM) {
+      const updatedAt = doc.get("locationUpdatedAt");
+      const fixMillis =
+        updatedAt && typeof updatedAt.toMillis === "function" ? updatedAt.toMillis() : 0;
+      const fresh = fixMillis > 0 && Date.now() - fixMillis < STALE_LOCATION_MS;
+      // Only exclude when we KNOW the volunteer is currently out of range: a
+      // valid AND recent fix that is beyond the radius. A missing, malformed, or
+      // stale location falls through and is notified (fail-open).
+      if (loc instanceof GeoPoint && fresh && haversineKm(origin, loc) > GEOFENCE_RADIUS_KM) {
         skippedOutOfRange++;
         return;
       }

@@ -11,8 +11,11 @@ import androidx.core.location.LocationManagerCompat
  * permission being granted is not the same thing — a volunteer can grant location
  * and still have the system toggle off, which makes the mesh silently find no
  * peers. Surfaced in the mesh debug screen.
+ *
+ * Named to avoid confusion with `com.google.android.gms.location.LocationServices`
+ * (the Play Services entry point used by [LocationProvider]).
  */
-object LocationServices {
+object LocationSettings {
 
     fun enabled(context: Context): Boolean {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager

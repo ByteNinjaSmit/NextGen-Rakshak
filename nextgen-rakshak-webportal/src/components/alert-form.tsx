@@ -62,7 +62,9 @@ export function AlertForm() {
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         () => resolve(undefined),
-        { timeout: 5000, maximumAge: 60_000 },
+        // The kiosk is stationary at a desk, so a slightly slower high-accuracy
+        // fix is worth it — a 1 km error on a 2 km geofence is not.
+        { timeout: 8000, maximumAge: 60_000, enableHighAccuracy: true },
       );
     });
   }

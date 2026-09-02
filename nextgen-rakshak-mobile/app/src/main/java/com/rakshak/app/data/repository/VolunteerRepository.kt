@@ -5,6 +5,7 @@ import com.rakshak.app.data.datasource.FirestoreVolunteerSource
 import com.rakshak.app.data.model.Volunteer
 import com.rakshak.app.networking.FcmTokenProvider
 import com.rakshak.app.utils.LocationProvider
+import kotlinx.coroutines.withTimeoutOrNull
 
 interface VolunteerRepository {
     /** Register the volunteer and their current FCM token so they receive alerts. */
@@ -31,7 +32,11 @@ class DefaultVolunteerRepository(
 
     override suspend fun publishLocation() {
         val uid = auth.currentUid ?: return
-        val location = locationProvider.current() ?: return
+        val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) { locationProvider.current() } ?: return
         source.updateLocation(uid, location.latitude, location.longitude)
+    }
+
+    private companion object {
+        const val LOCATION_TIMEOUT_MS = 8_000L
     }
 }

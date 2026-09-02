@@ -3,7 +3,8 @@ package com.rakshak.app.data.model
 /**
  * A missing-child alert. Mirrors the Firestore `alerts` document.
  *
- * @property embedding 128-d MobileFaceNet face embedding of the child's photo.
+ * @property embedding face embedding of the child's photo (128-d MobileFaceNet
+ *   or 512-d ArcFace, depending on the shipped model — length is not assumed).
  * @property timestamp When the alert was raised, in **epoch milliseconds** — it is
  *   compared directly against `System.currentTimeMillis()` for mesh expiry and
  *   for the elapsed-time display, so seconds here would break both.

@@ -13,6 +13,12 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+// Shared secret for the mesh packet HMAC (MeshCrypto). The default only keeps a
+// dev build compiling; a real build MUST override it in local.properties, or
+// every APK ships the same well-known key and mesh authentication is worthless.
+val meshHmacDefault = "rakshak-mesh-v1-dev-key-override-in-local-properties"
+val meshHmacKey: String = localProperties.getProperty("MESH_HMAC_KEY") ?: meshHmacDefault
+
 android {
     namespace = "com.rakshak.app"
     compileSdk = 35
@@ -26,16 +32,7 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // Shared secret for the mesh HMAC (MeshCrypto). A packet whose MAC does not
-        // verify under this key is dropped on receipt, so a device not running the
-        // official build cannot inject or tamper with alert content on a relay.
-        // Override per-deployment in local.properties (gitignored); the default
-        // only keeps a dev build compiling.
-        buildConfigField(
-            "String",
-            "MESH_HMAC_KEY",
-            "\"${localProperties.getProperty("MESH_HMAC_KEY") ?: "rakshak-mesh-v1-dev-key-override-in-local-properties"}\"",
-        )
+        buildConfigField("String", "MESH_HMAC_KEY", "\"$meshHmacKey\"")
     }
 
     signingConfigs {
@@ -56,6 +53,17 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    // A release APK must not ship the well-known dev mesh key.
+    gradle.taskGraph.whenReady {
+        val buildingRelease = allTasks.any { it.name.contains("Release", ignoreCase = true) }
+        if (buildingRelease && meshHmacKey == meshHmacDefault) {
+            throw GradleException(
+                "MESH_HMAC_KEY is unset — add a strong random MESH_HMAC_KEY to local.properties " +
+                    "before building a release. Shipping the default key defeats mesh authentication.",
+            )
         }
     }
 

@@ -18,6 +18,9 @@ class CosineEmbeddingComparator : EmbeddingComparator {
             normB += b[i] * b[i]
         }
         val denom = sqrt(normA) * sqrt(normB)
-        return if (denom == 0f) 0f else dot / denom
+        if (denom == 0f) return 0f
+        // Clamp: floating-point rounding can push an identical-vector score a hair
+        // past 1.0, and the score is shown to the volunteer as a percentage.
+        return (dot / denom).coerceIn(-1f, 1f)
     }
 }

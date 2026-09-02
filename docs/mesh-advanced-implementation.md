@@ -98,24 +98,24 @@ Line-by-line check of the delivered code against the report §4.3.2 text.
 - Only *alert* packets carry a timestamp, so only they get the expiry drop;
   match/resolve packets are bounded by the seen-set and TTL instead.
 
-**Operational note (not a code gap):** `BuildConfig.MESH_HMAC_KEY` falls back to a
-public default string when `MESH_HMAC_KEY` is absent from `local.properties`. A
-real deployment must set it, or every build shares a well-known key and the
-"rejects packets from devices not running the official app" property is lost.
+**Fixed since:** `BuildConfig.MESH_HMAC_KEY` still falls back to a public dev
+default for debug builds, but `build.gradle.kts` now **fails any release build**
+(`gradle.taskGraph.whenReady`) while the key is still the default — a shipped APK
+can no longer carry the well-known key by accident. Also this pass: the report's
+BLE / Wi-Fi-Direct sentence was corrected to "negotiates the fastest medium
+available", and `CosineEmbeddingComparator` now `coerceIn(-1f, 1f)` so
+floating-point rounding cannot show the volunteer a >100 % score.
 
 ## Still open (formal descope + hardware)
 
-- **Per-alert asymmetric signing by the kiosk** — *descoped, documented as future
-  work* (plan GAP-02 explicitly permits "implement HMAC **or** a written
-  descope"). Doing it properly needs an Ed25519 keypair generated at deploy time,
-  the private half in a Cloud Function that has never been deployed, the public
-  half pinned in the app, a canonical serialization shared by
-  `functions/src/embedding.ts` and `MeshPayloadCodec`, and a crypto dependency
-  (`java.security` Ed25519 is API 33+, below `minSdk 24`, so Tink or
-  BouncyCastle). The shipped HMAC already blocks packets from any build that does
-  not hold the key and catches tampering/corruption on a relay; the residual gap
-  — a modified copy of the *official* app — is the one only per-alert asymmetric
-  signing closes, and it is not reachable without the backend deploy landing
-  first.
+- **Per-alert asymmetric signing by the kiosk** — **formally descoped**, full
+  reasoning and a paste-ready future-work section (design sketch included) in
+  `docs/report-future-work-mesh-signing.md`. In brief: it depends on the alert
+  Cloud Function, which has never been deployed, so an untestable canonical-
+  serialisation contract between server and client would risk failing *every*
+  alert; it needs a crypto dependency below `minSdk 24`; and its residual value
+  over the shipped HMAC (a modified copy of the official app) is marginal for a
+  supervised, single-event volunteer deployment. Plan task GAP-02 explicitly
+  permits "HMAC **or** a written descope".
 - **≥3-device field trial (VER-08)** — needs hardware. The debug screen's
   timestamped packet log exists to make hop timing measurable when it runs.

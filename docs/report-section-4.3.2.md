@@ -10,9 +10,10 @@ implementation detail behind each claim.
 
 The Google Nearby Connections API [11] is an actively maintained peer-to-peer
 networking API that lets applications discover, connect to, and exchange data
-with nearby devices without any internet access. It uses Bluetooth Low Energy
-(BLE) for low-power discovery and switches to Wi-Fi Direct for high-speed data
-transfer. Nearby Connections establishes direct links between pairs of nearby
+with nearby devices without any internet access. It uses Bluetooth Low Energy for
+low-power discovery and negotiates the fastest medium available — Bluetooth or a
+peer-to-peer Wi-Fi connection (Wi-Fi Direct / hotspot) — for the data transfer
+itself. Nearby Connections establishes direct links between pairs of nearby
 devices — it is not itself a multi-hop mesh routing protocol. Reaching a
 volunteer several hops away from the point at which an alert enters the mesh
 therefore requires an application-level store-and-forward routing layer built on
@@ -31,9 +32,12 @@ during an event does not discard alerts that the flood may not repeat.
 
 Each packet is authenticated with an HMAC-SHA256 tag computed over its contents
 (excluding only the mutable TTL byte, so that a relay need not re-sign). A packet
-whose tag does not verify against the key embedded in the build is silently
-dropped; this rejects packets from any device not running the official
-application and detects any corruption introduced on a relay.
+whose tag does not verify against the per-deployment key compiled into the
+application is dropped before it is parsed or relayed; this rejects packets from
+any device not running the official build and detects any corruption introduced
+on a relay. (A per-alert asymmetric signature by the kiosk, which would also
+distinguish the official build from a modified copy of it, is identified as
+future work — see the Future Scope chapter.)
 
 An alert packet contains the message UUID, the alert's short text fields (child
 name, age, gender, clothing description, identifying marks and last-seen

@@ -73,7 +73,10 @@ class LoginViewModel(
                 )
                 rejectIfOfficer()
                 store.save(volunteer)
-                volunteers.register(volunteer) // best-effort FCM registration
+                // Genuinely best-effort: a failed or slow FCM registration must
+                // not fail a sign-in that already succeeded. onNewToken and the
+                // next launch's register() both recover it.
+                runCatching { volunteers.register(volunteer) }
             }.onFailure { _error.value = it.message ?: "Google sign-in failed" }
             _busy.value = false
         }
@@ -101,7 +104,10 @@ class LoginViewModel(
                 )
                 rejectIfOfficer()
                 store.save(volunteer)
-                volunteers.register(volunteer) // best-effort FCM registration
+                // Genuinely best-effort: a failed or slow FCM registration must
+                // not fail a sign-in that already succeeded. onNewToken and the
+                // next launch's register() both recover it.
+                runCatching { volunteers.register(volunteer) }
             }.onFailure { _error.value = it.message ?: "Sign-in failed" }
             _busy.value = false
         }

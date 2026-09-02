@@ -53,7 +53,10 @@ object Routes {
 }
 
 @Composable
-fun AppNavigation() {
+fun AppNavigation(
+    deepLinkAlertId: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
+) {
     val activityContext = LocalContext.current
     val context = activityContext.applicationContext
     val navController = rememberNavController()
@@ -65,6 +68,18 @@ fun AppNavigation() {
 
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+
+    // A tapped alert notification opens the scan screen — but only once the user
+    // is signed in and navigation has settled on Home, so back from Scan lands
+    // somewhere sensible (synopsis §7 step 5).
+    LaunchedEffect(deepLinkAlertId, volunteer, currentDestination?.route) {
+        if (deepLinkAlertId != null && volunteer != null &&
+            currentDestination?.route == Routes.HOME
+        ) {
+            navController.navigate(Routes.SCAN)
+            onDeepLinkConsumed()
+        }
+    }
 
     val showBottomBar = currentDestination?.route in listOf(
         Routes.HOME, Routes.MATCHES, Routes.PROFILE

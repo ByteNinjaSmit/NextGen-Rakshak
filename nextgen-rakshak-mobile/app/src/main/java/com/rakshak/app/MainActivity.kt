@@ -1,6 +1,7 @@
 package com.rakshak.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -28,10 +29,14 @@ class MainActivity : ComponentActivity() {
             startMeshIfPossible()
         }
 
+    /** Alert id from a tapped push notification; drives the deep link to Scan. */
+    private var deepLinkAlertId by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         NotificationHelper.ensureChannel(this)
+        deepLinkAlertId = intent?.getStringExtra(NotificationHelper.EXTRA_ALERT_ID)
 
         val alreadyGranted = hasAllPermissions()
         // Nothing to ask for on later launches — bring the mesh up straight away.
@@ -50,10 +55,21 @@ class MainActivity : ComponentActivity() {
                             },
                         )
                     }
-                    AppNavigation()
+                    AppNavigation(
+                        deepLinkAlertId = deepLinkAlertId,
+                        onDeepLinkConsumed = { deepLinkAlertId = null },
+                    )
                 }
             }
         }
+    }
+
+    // The activity is singleTop (see the manifest), so a notification tapped
+    // while it is already running delivers here instead of recreating it.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(NotificationHelper.EXTRA_ALERT_ID)?.let { deepLinkAlertId = it }
     }
 
     // The mesh deliberately keeps running after the activity finishes — a

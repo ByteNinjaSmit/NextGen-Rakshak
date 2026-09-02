@@ -29,16 +29,28 @@ export const googleProvider = new GoogleAuthProvider();
 // require a secure context, so this must only run client-side.
 export async function requestKioskNotifications(): Promise<string | null> {
   if (typeof window === "undefined" || !(await isSupported())) return null;
+  if (!("serviceWorker" in navigator)) return null;
+  // Without a VAPID key getToken throws; fail closed instead so the caller can
+  // show "couldn't enable" rather than crash.
+  if (!process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY) {
+    console.warn("NEXT_PUBLIC_FIREBASE_VAPID_KEY is not set; kiosk push disabled.");
+    return null;
+  }
 
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return null;
 
-  const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
-  const messaging: Messaging = getMessaging(app);
-  return getToken(messaging, {
-    vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-    serviceWorkerRegistration: registration,
-  });
+  try {
+    const registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js");
+    const messaging: Messaging = getMessaging(app);
+    return await getToken(messaging, {
+      vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+      serviceWorkerRegistration: registration,
+    });
+  } catch (err) {
+    console.error("Failed to obtain kiosk push token", err);
+    return null;
+  }
 }
 
 export async function onKioskMessage(callback: (payload: MessagePayload) => void): Promise<() => void> {

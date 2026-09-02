@@ -19,9 +19,22 @@ class RakshakMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onMessageReceived(message: RemoteMessage) {
-        val childName = message.data["childName"] ?: "a child"
-        Log.i(TAG, "New alert push: $childName")
-        NotificationHelper.showAlert(applicationContext, childName)
+        // Data-only messages (see functions/src/notify.ts) — onMessageReceived
+        // runs in every app state, so the notification is always built here.
+        val data = message.data
+        val childName = data["childName"] ?: "a child"
+        val alertId = data["alertId"]
+        if (alertId == null) {
+            Log.w(TAG, "alert push with no alertId; ignoring")
+            return
+        }
+        Log.i(TAG, "New alert push: $childName ($alertId)")
+        NotificationHelper.showAlert(
+            context = applicationContext,
+            alertId = alertId,
+            title = data["title"] ?: "Child Missing — Tap to Scan",
+            body = data["body"] ?: "Searching for $childName. Tap to help.",
+        )
     }
 
     override fun onNewToken(token: String) {

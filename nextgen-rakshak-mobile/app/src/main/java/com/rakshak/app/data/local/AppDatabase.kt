@@ -5,10 +5,16 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [PendingMatchEntity::class], version = 2, exportSchema = false)
+@Database(
+    entities = [PendingMatchEntity::class, MeshAlertEntity::class, MeshSeenEntity::class],
+    version = 3,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun pendingMatchDao(): PendingMatchDao
+
+    abstract fun meshDao(): MeshDao
 
     companion object {
         @Volatile
@@ -20,8 +26,8 @@ abstract class AppDatabase : RoomDatabase() {
                 AppDatabase::class.java,
                 "rakshak.db",
             )
-                // Queue is transient (offline matches awaiting sync); destructive
-                // migration is fine — nothing here needs to survive a schema bump.
+                // Everything here is transient mesh/queue state that the flood or
+                // the sync worker rebuilds — destructive migration is fine.
                 .fallbackToDestructiveMigration(dropAllTables = true)
                 .build().also { instance = it }
         }

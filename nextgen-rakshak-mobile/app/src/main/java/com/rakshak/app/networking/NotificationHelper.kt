@@ -5,6 +5,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import com.rakshak.app.MainActivity
@@ -15,14 +17,43 @@ object NotificationHelper {
 
     private const val CHANNEL_ID = "rakshak_alerts"
 
+    /** Low-importance channel for the persistent [com.rakshak.app.networking.mesh.MeshService] notification. */
+    const val MESH_CHANNEL_ID = "rakshak_mesh"
+
     fun ensureChannel(context: Context) {
-        val manager = context.getSystemService<NotificationManager>() ?: return
-        val channel = NotificationChannel(
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return // channels arrived in API 26
+        createChannel(
+            context,
             CHANNEL_ID,
             "Missing-child alerts",
             NotificationManager.IMPORTANCE_HIGH,
-        ).apply { description = "Tap to open the camera and scan the crowd" }
-        manager.createNotificationChannel(channel)
+            "Tap to open the camera and scan the crowd",
+        )
+    }
+
+    fun ensureMeshChannel(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        createChannel(
+            context,
+            MESH_CHANNEL_ID,
+            "Offline mesh",
+            NotificationManager.IMPORTANCE_LOW,
+            "Shows that the device is relaying alerts to nearby volunteers offline",
+        )
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    private fun createChannel(
+        context: Context,
+        id: String,
+        name: String,
+        importance: Int,
+        description: String,
+    ) {
+        val manager = context.getSystemService<NotificationManager>() ?: return
+        manager.createNotificationChannel(
+            NotificationChannel(id, name, importance).apply { this.description = description }
+        )
     }
 
     fun showAlert(context: Context, childName: String) {

@@ -8,6 +8,10 @@ package com.rakshak.app.data.model
  * @property timestamp When the alert was raised, in **epoch milliseconds** — it is
  *   compared directly against `System.currentTimeMillis()` for mesh expiry and
  *   for the elapsed-time display, so seconds here would break both.
+ * @property thumbnail A ~2-3 KB 96x96 JPEG of the child's face, populated only for
+ *   alerts that arrived over the mesh. It lets an offline device render the
+ *   parent's photo in the match dialog when `imageUrl` cannot be fetched. Never
+ *   read from or written to Firestore — the online path uses `imageUrl`.
  */
 data class Alert(
     val id: String = "",
@@ -23,6 +27,7 @@ data class Alert(
     val identifyingMarks: String = "",
     val status: String = "active",
     val timestamp: Long = 0L,
+    val thumbnail: ByteArray? = null,
 ) {
     // FloatArray needs explicit equals/hashCode for correct data-class behaviour.
     override fun equals(other: Any?): Boolean {

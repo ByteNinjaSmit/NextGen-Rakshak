@@ -25,6 +25,17 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Shared secret for the mesh HMAC (MeshCrypto). A packet whose MAC does not
+        // verify under this key is dropped on receipt, so a device not running the
+        // official build cannot inject or tamper with alert content on a relay.
+        // Override per-deployment in local.properties (gitignored); the default
+        // only keeps a dev build compiling.
+        buildConfigField(
+            "String",
+            "MESH_HMAC_KEY",
+            "\"${localProperties.getProperty("MESH_HMAC_KEY") ?: "rakshak-mesh-v1-dev-key-override-in-local-properties"}\"",
+        )
     }
 
     signingConfigs {
@@ -59,6 +70,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"

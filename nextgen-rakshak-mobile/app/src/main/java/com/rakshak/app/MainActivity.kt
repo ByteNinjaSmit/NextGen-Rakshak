@@ -14,18 +14,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import com.rakshak.app.di.ServiceLocator
 import com.rakshak.app.networking.NotificationHelper
+import com.rakshak.app.networking.mesh.MeshService
 import com.rakshak.app.presentation.navigation.AppNavigation
 import com.rakshak.app.presentation.screen.PermissionRationaleDialog
 import com.rakshak.app.presentation.theme.RakshakTheme
 
 class MainActivity : ComponentActivity() {
 
-    // Start the offline mesh once the user responds to the permission prompt.
+    // Start the offline mesh service once the user responds to the permission prompt.
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            ServiceLocator.mesh(this).start()
+            startMeshIfPossible()
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
 
         val alreadyGranted = hasAllPermissions()
         // Nothing to ask for on later launches — bring the mesh up straight away.
-        if (alreadyGranted) ServiceLocator.mesh(this).start()
+        if (alreadyGranted) startMeshIfPossible()
 
         setContent {
             RakshakTheme {
@@ -56,9 +56,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        if (isFinishing) ServiceLocator.mesh(this).stop()
+    // The mesh deliberately keeps running after the activity finishes — a
+    // backgrounded volunteer phone is exactly the relay the mesh needs. The
+    // MeshService "Stop" action is how a volunteer turns it off.
+
+    /** Start the mesh service if the transport permissions it needs are granted. */
+    private fun startMeshIfPossible() {
+        val meshPerms = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_ADVERTISE)
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+                add(Manifest.permission.BLUETOOTH_SCAN)
+            } else {
+                add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+        }
+        val granted = meshPerms.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
+        if (granted) MeshService.start(this)
     }
 
     private fun requiredPermissions(): List<String> = buildList {

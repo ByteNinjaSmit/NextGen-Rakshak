@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -54,7 +55,7 @@ private enum class ProfileDialog { NONE, PERSONAL_INFO, ABOUT }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ProfileScreen(volunteer: Volunteer?, onSignOut: () -> Unit) {
+fun ProfileScreen(volunteer: Volunteer?, onSignOut: () -> Unit, onOpenMesh: () -> Unit = {}) {
     var openDialog by remember { mutableStateOf(ProfileDialog.NONE) }
 
     Scaffold(
@@ -129,6 +130,8 @@ fun ProfileScreen(volunteer: Volunteer?, onSignOut: () -> Unit) {
             ) {
                 Column {
                     ProfileMenuItem(Icons.Filled.Person, "Personal Information", onClick = { openDialog = ProfileDialog.PERSONAL_INFO })
+                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+                    ProfileMenuItem(Icons.Filled.Wifi, "Mesh Network", onClick = onOpenMesh)
                     HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
                     ProfileMenuItem(Icons.Filled.Info, "About App", onClick = { openDialog = ProfileDialog.ABOUT })
                     HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))

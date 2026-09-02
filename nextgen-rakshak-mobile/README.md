@@ -17,8 +17,9 @@ com.rakshak.app/
 │   ├── matching/      FaceMatcher, EmbeddingComparator + CosineEmbeddingComparator, FaceMatch
 │   └── usecase/       ReportMatchUseCase
 ├── ml/                FaceDetector + MlKitFaceDetector, EmbeddingExtractor + TFLiteEmbeddingExtractor, FacePreprocessor
-├── networking/        RakshakMessagingService (FCM), NotificationHelper, ConnectivityObserver, MatchSyncWorker
-│   └── mesh/          MeshNetworkManager (Nearby P2P_CLUSTER), MeshPayloadCodec
+├── networking/        RakshakMessagingService (FCM), NotificationHelper, ConnectivityMonitor, MatchSyncWorker
+│   └── mesh/          MeshNetworkManager, MeshPayloadCodec, MeshCrypto (HMAC), MeshThumbnail,
+│                      MeshSeenCache, MeshRouter, MeshService (foreground)
 ├── di/                ServiceLocator (manual DI)
 ├── presentation/
 │   ├── screen/        LoginScreen, HomeScreen, ScanScreen
@@ -29,8 +30,29 @@ com.rakshak.app/
 ```
 
 ## Offline behaviour (Phase 2)
-- **Mesh:** Nearby Connections `P2P_CLUSTER`. Alerts hop device-to-device (store-and-forward, deduped by id) with no internet. The app also re-broadcasts online alerts into the mesh and uploads mesh-relayed matches from whichever device has internet.
-- **Offline matches:** if Firestore write fails, the match is queued in Room and relayed over the mesh; `MatchSyncWorker` (WorkManager) uploads the queue when connectivity returns.
+- **Mesh:** Nearby Connections `P2P_CLUSTER` + an application-level store-and-forward
+  layer (`MeshNetworkManager`). Nearby only links pairs of devices; multi-hop reach
+  is this layer re-broadcasting each received packet minus its sender.
+  - Every packet: a per-packet **UUID message id**, a **TTL** (6, decremented per hop,
+    dropped at 1), and an **HMAC-SHA256** trailer (`MeshCrypto`, key from
+    `BuildConfig.MESH_HMAC_KEY`) — a packet whose MAC fails to verify is dropped.
+  - Flood control: a **time-windowed seen-id cache** (`MeshSeenCache`, evicts after
+    the 8 h alert lifetime — genuinely short-lived), a resolved-id set, and an
+    expiry check.
+  - Alert packet also carries a **96×96 ≈2–3 KB JPEG thumbnail** (`MeshThumbnail`) so
+    an offline phone renders the parent's photo in the match dialog (FR-07).
+  - **Gateway-aware match routing:** peers exchange a HELLO with an "I have internet"
+    bit; match reports are sent to online peers first, flooded otherwise. The
+    online device uploads the match and sends an ACK back along the mesh.
+  - **Foreground service** (`MeshService`, `connectedDevice` type) keeps the mesh
+    relaying when the app is backgrounded / screen locked; a low-priority
+    notification shows the live peer count and a Stop action.
+  - Learned alerts + seen ids are **persisted to Room** (`MeshStore`) so a restart
+    mid-event does not drop them.
+  - Live packet log + peer count: **Profile → Mesh Network** (`MeshDebugScreen`).
+- **Offline matches:** if Firestore write fails, the match is queued in Room and
+  relayed over the mesh; `MatchSyncWorker` (WorkManager) uploads the queue when
+  connectivity returns.
 
 ## Setup
 1. Open this folder in **Android Studio** (it generates the Gradle wrapper jar on

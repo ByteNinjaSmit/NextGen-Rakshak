@@ -1,0 +1,9 @@
+# Firebase web config for project "nextgen-rakshak".
+# Gitignored — real values live here, never committed.
+NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyD4fAQJ3heIVz0aYgmE8zPDZlNpuj-yjRM
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=nextgen-rakshak.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=nextgen-rakshak
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=nextgen-rakshak.firebasestorage.app
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=865839432135
+NEXT_PUBLIC_FIREBASE_APP_ID=1:865839432135:web:6a0963d13dbcbb0f7619e2
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-076BFZHN07

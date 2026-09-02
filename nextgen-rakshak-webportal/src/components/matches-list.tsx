@@ -103,7 +103,14 @@ export function MatchesList() {
                 </TableCell>
                 <TableCell>{Math.round(match.confidence * 100)}%</TableCell>
                 <TableCell>
-                  <span className="capitalize">{match.volunteerRole}</span>
+                  {match.volunteerName ? (
+                    <div className="leading-tight">
+                      <div className="font-medium">{match.volunteerName}</div>
+                      <div className="text-xs capitalize text-muted-foreground">{match.volunteerRole}</div>
+                    </div>
+                  ) : (
+                    <span className="capitalize">{match.volunteerRole}</span>
+                  )}
                   {match.relayedBy && (
                     <span
                       className="ml-2 whitespace-nowrap text-xs text-muted-foreground"

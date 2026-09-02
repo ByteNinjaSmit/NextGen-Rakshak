@@ -16,5 +16,16 @@ service firebase.storage {
                    && request.resource.size < 5 * 1024 * 1024
                    && request.resource.contentType.matches('image/.*');
     }
+
+    // Face crops captured by a volunteer's phone at the moment of a sighting,
+    // shown next to the alert photo in the kiosk's match review. Any signed-in
+    // device may write its own capture — matches/{matchId} is where authorship
+    // is actually enforced (firestore.rules), this bucket just holds the pixels.
+    match /match_sightings/{imageId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 5 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
   }
 }

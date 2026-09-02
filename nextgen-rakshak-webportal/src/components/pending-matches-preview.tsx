@@ -32,7 +32,8 @@ export function PendingMatchesPreview() {
               {Math.round(match.confidence * 100)}%)
             </p>
             <p className="text-xs text-muted-foreground">
-              by {match.volunteerRole} · {timeAgo(match.timestamp)}
+              by {match.volunteerName ? `${match.volunteerName} (${match.volunteerRole})` : match.volunteerRole} ·{" "}
+              {timeAgo(match.timestamp)}
             </p>
           </div>
         ))}

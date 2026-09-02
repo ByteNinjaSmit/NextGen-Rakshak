@@ -2,6 +2,7 @@ package com.rakshak.app.di
 
 import android.content.Context
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import com.rakshak.app.data.auth.AuthService
 import com.rakshak.app.data.auth.FirebaseAuthService
 import com.rakshak.app.data.auth.GoogleSignInClient
@@ -9,6 +10,7 @@ import com.rakshak.app.data.datasource.FirestoreAlertSource
 import com.rakshak.app.data.datasource.FirestoreMatchSource
 import com.rakshak.app.data.datasource.FirestoreVolunteerSource
 import com.rakshak.app.data.datasource.MeshAlertSource
+import com.rakshak.app.data.datasource.SightingPhotoUploader
 import com.rakshak.app.data.local.AppDatabase
 import com.rakshak.app.data.local.VolunteerStore
 import com.rakshak.app.data.repository.AlertRepository
@@ -33,6 +35,8 @@ import com.rakshak.app.utils.LocationProvider
 object ServiceLocator {
 
     private val firestore: FirebaseFirestore by lazy { FirebaseFirestore.getInstance() }
+
+    private val storage: FirebaseStorage by lazy { FirebaseStorage.getInstance() }
 
     private val authService: AuthService by lazy { FirebaseAuthService() }
 
@@ -97,5 +101,9 @@ object ServiceLocator {
         )
 
     fun reportMatchUseCase(context: Context): ReportMatchUseCase =
-        ReportMatchUseCase(matchRepository(context), LocationProvider(context.applicationContext))
+        ReportMatchUseCase(
+            matchRepository(context),
+            LocationProvider(context.applicationContext),
+            SightingPhotoUploader(storage),
+        )
 }

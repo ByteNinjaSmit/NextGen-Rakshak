@@ -83,6 +83,8 @@ export interface Match {
   imageUrl: string;
   volunteerId: string;
   volunteerRole: string;
+  /** Blank when the reporter signed in via the phone-only demo path, which never collects a name. */
+  volunteerName?: string;
   /**
    * Set when the sighting reached Firestore over the offline mesh, carried by a
    * different device than the one that made it. Present means `volunteerId` was

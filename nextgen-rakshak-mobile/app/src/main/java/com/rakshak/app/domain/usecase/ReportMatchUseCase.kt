@@ -7,6 +7,7 @@ import com.rakshak.app.data.model.MatchReport
 import com.rakshak.app.data.model.Volunteer
 import com.rakshak.app.data.repository.MatchRepository
 import com.rakshak.app.utils.LocationProvider
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Handles a volunteer confirming a match: captures GPS, uploads the captured
@@ -19,7 +20,10 @@ class ReportMatchUseCase(
     private val photoUploader: SightingPhotoUploader,
 ) {
     suspend operator fun invoke(alert: Alert, volunteer: Volunteer, confidence: Float, faceCrop: Bitmap) {
-        val location = locationProvider.current()
+        // Bounded: FusedLocation can take ~30 s for a cold fix indoors, and the
+        // volunteer is holding a child while the confirm button spins. A sighting
+        // recorded without coordinates (hasLocation = false) beats a 30 s hang.
+        val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) { locationProvider.current() }
         // The sighting photo must be the face actually seen, not the alert's own
         // photo, or the kiosk's side-by-side review compares a picture to itself.
         // If the upload fails (offline, quota), fall back to the alert photo so the
@@ -40,5 +44,9 @@ class ReportMatchUseCase(
                 hasLocation = location != null,
             )
         )
+    }
+
+    private companion object {
+        const val LOCATION_TIMEOUT_MS = 6_000L
     }
 }

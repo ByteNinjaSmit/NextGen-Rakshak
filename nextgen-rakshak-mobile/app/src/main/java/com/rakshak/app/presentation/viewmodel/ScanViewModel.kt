@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.rakshak.app.data.model.Alert
 import com.rakshak.app.data.model.Volunteer
 import com.rakshak.app.data.repository.AlertRepository
+import com.rakshak.app.data.repository.VolunteerRepository
 import com.rakshak.app.domain.matching.FaceMatcher
 import com.rakshak.app.domain.usecase.ReportMatchUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +36,7 @@ class ScanViewModel(
     private val matcher: FaceMatcher,
     private val reportMatch: ReportMatchUseCase,
     private val volunteer: Volunteer,
+    private val volunteerRepository: VolunteerRepository,
 ) : ViewModel() {
 
     @Volatile
@@ -69,6 +71,10 @@ class ScanViewModel(
                 _scanningFor.value = alerts.map { it.childName }
             }
         }
+        // A scanning volunteer is on the move; refresh their position so the
+        // server geofences the next alert to where they actually are, not where
+        // they were when Home last loaded.
+        viewModelScope.launch { runCatching { volunteerRepository.publishLocation() } }
     }
 
     /**

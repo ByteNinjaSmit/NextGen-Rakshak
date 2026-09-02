@@ -72,6 +72,37 @@ rejection, HELLO/ACK), `MeshCryptoTest`, `MeshSeenCacheTest` (eviction, restore)
 | `logLine()` non-atomic write | now `_log.update { … }`. |
 | `MatchReport` lat/long `0.0` on no fix | `MatchReport.hasLocation` flows through the mesh wire, Room (`AppDatabase` v3→v4), and Firestore. The kiosk (`matches-list.tsx`) renders **"Dispatch (no location)"** without a Maps link when it is false, instead of a pin on 0,0. |
 
+## Fourth pass — code-vs-report review
+
+Line-by-line check of the delivered code against the report §4.3.2 text.
+
+**Gaps found and fixed:**
+
+| Gap | Fix |
+|---|---|
+| **`identifyingMarks` never reached an offline phone.** The alert wire carried name/age/gender/clothing/last-seen but not identifying marks — yet `ScanScreen`'s confirmation dialog renders that row, so it was always blank for a mesh-delivered alert. Exactly the parent-provided detail a human check needs. | added to the alert packet (after `lastSeen`) and to `MeshPayloadCodecTest`. |
+| **`volunteerName` never reached the kiosk over the mesh.** The match wire carried `volunteerId`/`volunteerRole` but not the name, so every mesh-relayed sighting showed as a bare role even though `FirestoreMatchSource` writes the name field. | added to the match packet (after `volunteerRole`). |
+| **Match dedup keys were not persisted.** `handleAlert`/`handleResolve` saved their message ids to `mesh_seen`; `handleMatch` did not, so a restart could re-process (and, if online, re-upload) a still-circulating match packet. | `handleMatch` now persists the message id and the semantic match key. |
+
+**Verified accurate (no change):** per-packet v4 UUID, TTL 6 → dropped at 1, time-windowed seen-set evicting at the 8 h alert lifetime, alert-expiry drop before relay, HMAC over the body excluding byte 0, bad-MAC packets dropped, `parentContact` absent from the wire, 128×4-byte embedding with the length on the wire, ≤8 KB thumbnail under the 32 KB cap, foreground-service hosting, HELLO gateway bit + gateway-preferred match routing, upload → ACK → bounded retry.
+
+**Known imprecisions left in the report wording (acceptable):**
+
+- "It uses BLE for low-power discovery and switches to Wi-Fi Direct" — P2P_CLUSTER
+  actually negotiates among Bluetooth, BLE and Wi-Fi (hotspot / Direct / Aware /
+  LAN); "Wi-Fi Direct" is the common shorthand.
+- Cosine similarity is mathematically in [−1, 1]; the comparator returns the raw
+  value un-clamped. For L2-normalised face embeddings in this domain it is
+  effectively [0, 1] (genuine pairs ~0.71–0.99, impostors ~0.09–0.36), which the
+  report now states as "for face embeddings, falls between 0 and 1".
+- Only *alert* packets carry a timestamp, so only they get the expiry drop;
+  match/resolve packets are bounded by the seen-set and TTL instead.
+
+**Operational note (not a code gap):** `BuildConfig.MESH_HMAC_KEY` falls back to a
+public default string when `MESH_HMAC_KEY` is absent from `local.properties`. A
+real deployment must set it, or every build shares a well-known key and the
+"rejects packets from devices not running the official app" property is lost.
+
 ## Still open (formal descope + hardware)
 
 - **Per-alert asymmetric signing by the kiosk** — *descoped, documented as future

@@ -18,6 +18,8 @@ data class Alert(
     val imageUrl: String = "",
     val embedding: FloatArray = FloatArray(0),
     val lastSeen: String = "",
+    /** Free-text scars/marks/accessories not covered by clothingDesc. */
+    val identifyingMarks: String = "",
     val status: String = "active",
     val timestamp: Long = 0L,
 ) {

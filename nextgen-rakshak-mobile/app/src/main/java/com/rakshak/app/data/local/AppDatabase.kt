@@ -5,7 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [PendingMatchEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PendingMatchEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun pendingMatchDao(): PendingMatchDao
@@ -19,7 +19,11 @@ abstract class AppDatabase : RoomDatabase() {
                 context.applicationContext,
                 AppDatabase::class.java,
                 "rakshak.db",
-            ).build().also { instance = it }
+            )
+                // Queue is transient (offline matches awaiting sync); destructive
+                // migration is fine — nothing here needs to survive a schema bump.
+                .fallbackToDestructiveMigration(dropAllTables = true)
+                .build().also { instance = it }
         }
     }
 }

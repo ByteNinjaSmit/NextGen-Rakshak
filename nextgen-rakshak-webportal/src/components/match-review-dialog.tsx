@@ -84,10 +84,25 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
             <DialogHeader>
               <DialogTitle>Review match for {match.childName}</DialogTitle>
               <DialogDescription>
-                {Math.round(match.confidence * 100)}% similarity · reported by {match.volunteerRole} ·{" "}
-                {timeAgo(match.timestamp)}
+                {Math.round(match.confidence * 100)}% similarity · {timeAgo(match.timestamp)}
               </DialogDescription>
             </DialogHeader>
+
+            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Reported By</p>
+                <p className="font-medium">{match.volunteerName || "Name not provided"}</p>
+                <p className="text-xs capitalize text-muted-foreground">{match.volunteerRole}</p>
+              </div>
+              {match.relayedBy && (
+                <span
+                  className="whitespace-nowrap text-xs text-muted-foreground"
+                  title="Carried to the server by another volunteer's phone over the offline mesh. The reporter is named by that relay rather than proven by their own session."
+                >
+                  via mesh
+                </span>
+              )}
+            </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">

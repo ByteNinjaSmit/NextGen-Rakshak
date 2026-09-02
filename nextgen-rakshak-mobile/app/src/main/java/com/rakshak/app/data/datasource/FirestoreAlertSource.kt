@@ -75,6 +75,7 @@ class FirestoreAlertSource(
             ?.mapNotNull { (it as? Number)?.toFloat() }
             ?.toFloatArray() ?: FloatArray(0),
         lastSeen = doc.getString("lastSeen").orEmpty(),
+        identifyingMarks = doc.getString("identifyingMarks").orEmpty(),
         status = doc.getString("status") ?: "active",
         // Milliseconds, not seconds: Alert.timestamp is compared against
         // System.currentTimeMillis() for expiry and elapsed-time display.

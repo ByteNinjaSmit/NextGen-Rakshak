@@ -17,6 +17,9 @@ object NotificationHelper {
 
     private const val CHANNEL_ID = "rakshak_alerts"
 
+    /** Intent extra: the alert id a notification tap should open the scan screen for. */
+    const val EXTRA_ALERT_ID = "com.rakshak.app.extra.ALERT_ID"
+
     /** Low-importance channel for the persistent [com.rakshak.app.networking.mesh.MeshService] notification. */
     const val MESH_CHANNEL_ID = "rakshak_mesh"
 
@@ -56,28 +59,36 @@ object NotificationHelper {
         )
     }
 
-    fun showAlert(context: Context, childName: String) {
+    /**
+     * Post the "child missing" alert notification. Tapping it opens
+     * [MainActivity] with [EXTRA_ALERT_ID] set, which routes the volunteer
+     * straight to the scan screen (synopsis §7 step 5).
+     */
+    fun showAlert(context: Context, alertId: String, title: String, body: String) {
         ensureChannel(context)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_ALERT_ID, alertId)
         }
         val pending = PendingIntent.getActivity(
-            context, 0, intent,
+            // requestCode keyed on the alert so multiple alerts get distinct
+            // PendingIntents rather than all resolving to the first one's extras.
+            context, alertId.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_rakshak)
             .setColor(context.getColor(R.color.notification_accent))
-            .setContentTitle("Child Missing — Tap to Scan")
-            .setContentText("Searching for $childName. Tap to help.")
+            .setContentTitle(title)
+            .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
 
         context.getSystemService<NotificationManager>()
-            ?.notify(childName.hashCode(), notification)
+            ?.notify(alertId.hashCode(), notification)
     }
 }

@@ -26,17 +26,20 @@ class DefaultVolunteerRepository(
 ) : VolunteerRepository {
 
     override suspend fun register(volunteer: Volunteer) {
-        val token = fcmToken.token()
+        // The FCM token fetch has no built-in timeout and blocks the sign-in
+        // coroutine that awaits it. An empty token is fine — RakshakMessagingService
+        // .onNewToken writes the real one the moment FCM issues it.
+        val token = withTimeoutOrNull(NETWORK_TIMEOUT_MS) { fcmToken.token() }.orEmpty()
         source.upsert(volunteer, token)
     }
 
     override suspend fun publishLocation() {
         val uid = auth.currentUid ?: return
-        val location = withTimeoutOrNull(LOCATION_TIMEOUT_MS) { locationProvider.current() } ?: return
+        val location = withTimeoutOrNull(NETWORK_TIMEOUT_MS) { locationProvider.current() } ?: return
         source.updateLocation(uid, location.latitude, location.longitude)
     }
 
     private companion object {
-        const val LOCATION_TIMEOUT_MS = 8_000L
+        const val NETWORK_TIMEOUT_MS = 8_000L
     }
 }

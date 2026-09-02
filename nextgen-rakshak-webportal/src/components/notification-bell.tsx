@@ -27,6 +27,7 @@ export function NotificationBell() {
   const { user } = useAuth();
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("default");
   const [enabling, setEnabling] = useState(false);
+  const [enableError, setEnableError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<KioskNotification[]>([]);
   const [unread, setUnread] = useState(0);
@@ -69,10 +70,19 @@ export function NotificationBell() {
 
   async function onEnable() {
     setEnabling(true);
+    setEnableError(null);
     try {
       const token = await requestKioskNotifications();
       if (token && user) await saveOfficerFcmToken(user.uid, token);
       setPermission(token ? "granted" : Notification.permission);
+      if (!token && Notification.permission === "granted") {
+        setEnableError("Notifications are on, but push could not be set up. Check the kiosk's push configuration.");
+      } else if (Notification.permission === "denied") {
+        setEnableError("Notifications are blocked for this site. Re-enable them in the browser's site settings.");
+      }
+    } catch (err) {
+      console.error(err);
+      setEnableError("Could not enable notifications. Try again.");
     } finally {
       setEnabling(false);
     }
@@ -100,10 +110,13 @@ export function NotificationBell() {
           )}
         </Button>
       ) : (
-        <Button variant="ghost" size="sm" onClick={onEnable} disabled={enabling}>
-          {enabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellOff className="h-4 w-4" />}
-          Enable alerts
-        </Button>
+        <div className="flex flex-col items-start gap-1">
+          <Button variant="ghost" size="sm" onClick={onEnable} disabled={enabling}>
+            {enabling ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellOff className="h-4 w-4" />}
+            Enable alerts
+          </Button>
+          {enableError && <p className="max-w-64 text-xs text-destructive">{enableError}</p>}
+        </div>
       )}
 
       {open && permission === "granted" && (

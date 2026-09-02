@@ -79,16 +79,25 @@ export async function broadcastAlert(
   }
 
   // FCM multicast caps at 500 tokens per request.
+  //
+  // Data-only (no `notification` block): a message with a `notification` payload
+  // is displayed by the OS itself when the app is backgrounded and
+  // `onMessageReceived` never runs, so the volunteer would get a plain default
+  // notification instead of the app's high-importance channel + deep link to the
+  // scan screen. Data-only guarantees RakshakMessagingService handles every
+  // message and builds the notification the same way in every app state.
   const messaging = getMessaging();
   for (let i = 0; i < tokens.length; i += 500) {
     const batch = tokens.slice(i, i + 500);
     const res = await messaging.sendEachForMulticast({
       tokens: batch,
-      notification: {
+      data: {
+        type: "alert",
+        alertId,
+        childName,
         title: "Child Missing — Tap to Scan",
         body: `Searching for ${childName}. Tap to help.`,
       },
-      data: { alertId, childName },
       android: { priority: "high" },
     });
 
@@ -138,7 +147,11 @@ export async function notifyOfficerOfMatch(
         title: "New Match Sighting",
         body: `${childName} — ${Math.round(confidence * 100)}% confidence match reported.`,
       },
-      data: { childName },
+      // `link` is carried in data as well as fcmOptions: the kiosk service
+      // worker defines its own onBackgroundMessage handler, so it displays the
+      // notification itself and fcmOptions.link is never applied — the SW reads
+      // data.link in its notificationclick handler instead.
+      data: { childName, link: "/matches" },
       webpush: { fcmOptions: { link: "/matches" } },
     });
   } catch (err) {

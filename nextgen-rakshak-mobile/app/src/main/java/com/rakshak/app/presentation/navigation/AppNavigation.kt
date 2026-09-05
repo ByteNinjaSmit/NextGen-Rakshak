@@ -151,8 +151,7 @@ fun AppNavigation(
                     }
                 }
                 LoginScreen(
-                    onGoogleSignIn = { role -> loginViewModel.signInWithGoogle(activityContext, role) },
-                    onEmailSignIn = loginViewModel::signInWithEmail,
+                    onGoogleSignIn = { loginViewModel.signInWithGoogle(activityContext) },
                     busy = signInBusy,
                     error = signInError,
                 )

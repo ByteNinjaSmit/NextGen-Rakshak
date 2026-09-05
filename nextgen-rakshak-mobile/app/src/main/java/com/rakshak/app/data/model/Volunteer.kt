@@ -11,7 +11,7 @@ package com.rakshak.app.data.model
 data class Volunteer(
     val id: String,
     val phone: String,
-    val role: String, // "police" | "ncc" | "ngo" | "community"
+    val role: String, // "volunteer" (mobile) | "officer" / "police" (web portal)
     val name: String = "",
     val email: String = "",
 )

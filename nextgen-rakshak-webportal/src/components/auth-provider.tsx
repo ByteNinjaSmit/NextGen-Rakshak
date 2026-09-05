@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { onIdTokenChanged, type User } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { ensureOfficerRole, hasOfficerRole } from "@/lib/auth";
+import { ensureOfficerRole, hasOfficerRole, handleRedirectResult } from "@/lib/auth";
 import { subscribeOfficer } from "@/lib/officers";
 import type { Officer } from "@/types";
 
@@ -43,6 +43,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const latestEvent = useRef(0);
 
   useEffect(() => {
+    handleRedirectResult().catch(() => {});
+
     // A session is restored on reload without going through signInWithGoogle,
     // so the claim is re-checked here rather than trusted from sign-in alone.
     // onIdTokenChanged (not onAuthStateChanged) so that the forced token

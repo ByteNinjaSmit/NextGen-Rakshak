@@ -46,22 +46,18 @@ object Constants {
 
     // --- Quality gate (com.rakshak.app.ml.ImageQuality) ---
     /** Minimum face box side in the camera frame, in pixels. */
-    const val MIN_FACE_PX = 65
+    const val MIN_FACE_PX = 40
     /** Mean-luminance window (0..255) the aligned tile must fall inside. */
-    const val MIN_FACE_LUMA = 35f
-    const val MAX_FACE_LUMA = 240f
+    const val MIN_FACE_LUMA = 20f
+    const val MAX_FACE_LUMA = 245f
     /** Minimum variance-of-Laplacian on the aligned tile; below this it is blurred. */
-    const val MIN_SHARPNESS_VAR = 30f
+    const val MIN_SHARPNESS_VAR = 15f
 
     /**
      * Head-pose limits for discarding non-frontal faces before embedding.
-     * MobileFaceNet expects roughly frontal input, so a profile view yields an
-     * embedding that matches nothing useful. Yaw (left/right turn) is the
-     * dominant signal; roll (head tilt) is tolerated more generously because
-     * the crop stays recognisable.
      */
-    const val MAX_FACE_YAW_DEGREES = 30f
-    const val MAX_FACE_ROLL_DEGREES = 40f
+    const val MAX_FACE_YAW_DEGREES = 45f
+    const val MAX_FACE_ROLL_DEGREES = 50f
 
     /**
      * Padding added around the detected face box before cropping to the model

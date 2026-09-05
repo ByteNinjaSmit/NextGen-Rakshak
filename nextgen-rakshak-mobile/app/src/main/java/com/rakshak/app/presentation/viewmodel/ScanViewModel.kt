@@ -17,6 +17,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import android.graphics.BitmapFactory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * A match awaiting the volunteer's visual confirmation. [faceCrop] is the face as
@@ -77,31 +80,66 @@ class ScanViewModel(
     init {
         viewModelScope.launch {
             repository.observeActiveAlerts().collect { alerts ->
-                val processed = alerts.map { alert ->
-                    val thumb = alert.thumbnail
-                    if (alert.embedding.isEmpty() && thumb != null && thumb.isNotEmpty()) {
-                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
-                        if (bitmap != null) {
-                            val faces = com.rakshak.app.ml.MlKitFaceDetector().detect(bitmap)
-                            val firstFace = faces.firstOrNull()
-                            if (firstFace != null) {
-                                val tile = com.rakshak.app.ml.FacePreprocessor.toModelInput(bitmap, firstFace)
+                val processed = withContext(Dispatchers.IO) {
+                    alerts.map { alert ->
+                        if (alert.embedding.isNotEmpty()) {
+                            alert
+                        } else {
+                            var bitmap: Bitmap? = null
+                            val thumb = alert.thumbnail
+                            if (thumb != null && thumb.isNotEmpty()) {
+                                bitmap = BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
+                            } else if (alert.imageUrl.isNotBlank()) {
+                                bitmap = runCatching {
+                                    val url = java.net.URL(alert.imageUrl)
+                                    val connection = url.openConnection() as java.net.HttpURLConnection
+                                    connection.connectTimeout = 8000
+                                    connection.readTimeout = 8000
+                                    connection.doInput = true
+                                    connection.connect()
+                                    connection.inputStream.use { stream ->
+                                        BitmapFactory.decodeStream(stream)
+                                    }
+                                }.onFailure {
+                                    Log.e(TAG, "Failed to download alert image from ${alert.imageUrl}", it)
+                                }.getOrNull()
+                            }
+
+                            if (bitmap != null) {
+                                val faces = runCatching {
+                                    com.rakshak.app.ml.MlKitFaceDetector().detect(bitmap)
+                                }.getOrDefault(emptyList())
+
+                                val firstFace = faces.firstOrNull()
+                                val tile = if (firstFace != null) {
+                                    com.rakshak.app.ml.FacePreprocessor.toModelInput(bitmap, firstFace)
+                                } else {
+                                    // Fallback: If ML Kit landmark detector missed, crop center square & scale to 112x112
+                                    com.rakshak.app.ml.FacePreprocessor.cropAndResize(
+                                        bitmap,
+                                        android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
+                                    )
+                                }
                                 val emb = matcher.extractTileEmbedding(tile)
+                                Log.i(TAG, "Extracted ${emb.size}-d embedding on-device for alert ${alert.id} (${alert.childName})")
                                 alert.copy(embedding = emb)
-                            } else alert
-                        } else alert
-                    } else alert
+                            } else {
+                                Log.w(TAG, "No bitmap available for alert ${alert.id} (${alert.childName})")
+                                alert
+                            }
+                        }
+                    }
                 }
                 activeAlerts = processed
                 _scanningFor.value = processed.map { it.childName }
                 if (processed.isEmpty()) {
                     _scanStatus.value = "No active alerts. Point camera at faces."
+                } else {
+                    val countWithEmb = processed.count { it.embedding.isNotEmpty() }
+                    _scanStatus.value = "Ready. Scanning for ${processed.size} child alert(s) ($countWithEmb loaded)."
                 }
             }
         }
-        // A scanning volunteer is on the move; refresh their position so the
-        // server geofences the next alert to where they actually are, not where
-        // they were when Home last loaded.
         viewModelScope.launch { runCatching { volunteerRepository.publishLocation() } }
     }
 

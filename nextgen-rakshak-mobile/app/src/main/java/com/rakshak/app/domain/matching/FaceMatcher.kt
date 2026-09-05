@@ -33,6 +33,9 @@ class FaceMatcher(
     /** Drop all per-track embedding history. */
     fun reset() = aggregator.reset()
 
+    /** Extract a 128-d vector directly from an aligned model tile. */
+    fun extractTileEmbedding(tile: Bitmap): FloatArray = extractor.extract(tile)
+
     /** Returns the best match per detected face that clears the threshold (backward compatible). */
     suspend fun match(frame: Bitmap, activeAlerts: List<Alert>): List<FaceMatch> =
         scanFrame(frame, activeAlerts).matches
@@ -106,22 +109,17 @@ class FaceMatcher(
                 }
 
                 val alert = bestAlert ?: return@forEachIndexed
-                // Surface once evidence is accumulated across frames, or single-frame confidence is high (>= 0.60).
-                // This prevents trackingId null-resets from dropping genuine matches.
-                val ready = fused.frames >= fusionFrames || bestScore >= 0.60f || face.trackingId == null
-                if (ready) {
-                    aggregator.forget(face.trackingId)
-                    matchedBoxes.add(index)
-                    matches.add(
-                        FaceMatch(
-                            alertId = alert.id,
-                            confidence = bestScore,
-                            boundingBox = face.boundingBox,
-                            faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
-                            framesFused = fused.frames,
-                        )
+                aggregator.forget(face.trackingId)
+                matchedBoxes.add(index)
+                matches.add(
+                    FaceMatch(
+                        alertId = alert.id,
+                        confidence = bestScore,
+                        boundingBox = face.boundingBox,
+                        faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
+                        framesFused = fused.frames,
                     )
-                }
+                )
             }
 
             val faceBoxes = allDetected.mapIndexed { index, face ->

@@ -31,24 +31,18 @@ object Constants {
      * exists to prevent, while a false candidate costs only the moment a
      * volunteer takes to tap "Not a match" — every match is human-confirmed.
      */
-    const val SIMILARITY_THRESHOLD = 0.55f
+    const val SIMILARITY_THRESHOLD = 0.50f
 
     /**
      * Frames of the same tracked face whose embeddings are averaged before a
-     * match is surfaced. Averaging L2-normalised embeddings suppresses
-     * per-frame detector jitter and motion blur, widening the gap between a true
-     * and a false candidate. Kept small so a real match still appears within
-     * about a second of the child entering view.
+     * match is surfaced. Set to 1 for instant single-frame matching.
      */
-    const val EMBEDDING_FUSION_FRAMES = 3
+    const val EMBEDDING_FUSION_FRAMES = 1
 
     /**
-     * A single frame scoring at least this is surfaced immediately without
-     * waiting for [EMBEDDING_FUSION_FRAMES] — a very confident hit should not be
-     * delayed. Must sit comfortably above [SIMILARITY_THRESHOLD]; re-tune
-     * alongside it.
+     * Single-frame match threshold for immediate match surfacing.
      */
-    const val STRONG_MATCH_THRESHOLD = 0.72f
+    const val STRONG_MATCH_THRESHOLD = 0.50f
 
     // --- Quality gate (com.rakshak.app.ml.ImageQuality) ---
     /** Minimum face box side in the camera frame, in pixels. */

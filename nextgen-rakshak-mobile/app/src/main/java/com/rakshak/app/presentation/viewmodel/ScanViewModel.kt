@@ -77,9 +77,24 @@ class ScanViewModel(
     init {
         viewModelScope.launch {
             repository.observeActiveAlerts().collect { alerts ->
-                activeAlerts = alerts
-                _scanningFor.value = alerts.map { it.childName }
-                if (alerts.isEmpty()) {
+                val processed = alerts.map { alert ->
+                    val thumb = alert.thumbnail
+                    if (alert.embedding.isEmpty() && thumb != null && thumb.isNotEmpty()) {
+                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
+                        if (bitmap != null) {
+                            val faces = com.rakshak.app.ml.MlKitFaceDetector().detect(bitmap)
+                            val firstFace = faces.firstOrNull()
+                            if (firstFace != null) {
+                                val tile = com.rakshak.app.ml.FacePreprocessor.toModelInput(bitmap, firstFace)
+                                val emb = matcher.extractTileEmbedding(tile)
+                                alert.copy(embedding = emb)
+                            } else alert
+                        } else alert
+                    } else alert
+                }
+                activeAlerts = processed
+                _scanningFor.value = processed.map { it.childName }
+                if (processed.isEmpty()) {
                     _scanStatus.value = "No active alerts. Point camera at faces."
                 }
             }

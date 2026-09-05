@@ -52,12 +52,12 @@ object Constants {
 
     // --- Quality gate (com.rakshak.app.ml.ImageQuality) ---
     /** Minimum face box side in the camera frame, in pixels. */
-    const val MIN_FACE_PX = 90
+    const val MIN_FACE_PX = 65
     /** Mean-luminance window (0..255) the aligned tile must fall inside. */
-    const val MIN_FACE_LUMA = 40f
-    const val MAX_FACE_LUMA = 235f
+    const val MIN_FACE_LUMA = 35f
+    const val MAX_FACE_LUMA = 240f
     /** Minimum variance-of-Laplacian on the aligned tile; below this it is blurred. */
-    const val MIN_SHARPNESS_VAR = 60f
+    const val MIN_SHARPNESS_VAR = 30f
 
     /**
      * Head-pose limits for discarding non-frontal faces before embedding.

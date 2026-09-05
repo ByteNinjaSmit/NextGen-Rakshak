@@ -24,6 +24,7 @@ export const auth: Auth = getAuth(app);
 // Must match setGlobalOptions({ region }) in functions/src/index.ts.
 export const functions: Functions = getFunctions(app, "us-central1");
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: "select_account" });
 
 // Kiosk browser push (match/alert notifications). SW registration + getToken
 // require a secure context, so this must only run client-side.

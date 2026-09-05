@@ -33,24 +33,64 @@ class FaceMatcher(
     /** Drop all per-track embedding history. */
     fun reset() = aggregator.reset()
 
-    /** Returns the best match per detected face that clears the threshold. */
+    /** Returns the best match per detected face that clears the threshold (backward compatible). */
     suspend fun match(frame: Bitmap, activeAlerts: List<Alert>): List<FaceMatch> =
+        scanFrame(frame, activeAlerts).matches
+
+    /**
+     * Executes the full scanning pipeline on [frame]:
+     * 1. Detects all faces (so the UI always has real-time face tracking boxes).
+     * 2. If active alerts with embeddings exist, filters frontal/quality faces and performs embedding & matching.
+     * 3. Returns a [ScanFrameResult] with detected face boxes, status guidance, and any candidate matches.
+     */
+    suspend fun scanFrame(frame: Bitmap, activeAlerts: List<Alert>): ScanFrameResult =
         withContext(Dispatchers.Default) {
-            if (activeAlerts.isEmpty()) return@withContext emptyList()
+            val allDetected = detector.detect(frame)
+            if (allDetected.isEmpty()) {
+                return@withContext ScanFrameResult(
+                    detectedFaces = emptyList(),
+                    matches = emptyList(),
+                    statusMessage = if (activeAlerts.isEmpty()) "No active alerts. Point camera at faces." else "Looking for faces...",
+                )
+            }
+
             val alertsWithEmbedding = activeAlerts.filter { it.embedding.isNotEmpty() }
-            if (alertsWithEmbedding.isEmpty()) return@withContext emptyList()
+            val frameW = frame.width.toFloat().coerceAtLeast(1f)
+            val frameH = frame.height.toFloat().coerceAtLeast(1f)
 
-            // Discard non-frontal faces before the expensive steps: they cannot
-            // match reliably and alignment on a profile is meaningless.
-            val faces = detector.detect(frame).filter { it.isFrontal(maxYaw, maxRoll) }
-
-            faces.mapNotNull { face ->
-                val tile = FacePreprocessor.toModelInput(frame, face)
-                if (!ImageQuality.check(face.boundingBox, tile).ok) {
-                    // A bad crop for a tracked face should not poison its running
-                    // mean, but also should not reset it — just skip this frame.
-                    return@mapNotNull null
+            // If no alerts exist with embeddings, return the detected faces so the user sees live tracking!
+            if (alertsWithEmbedding.isEmpty()) {
+                val faceBoxes = allDetected.map { face ->
+                    FaceBox(
+                        left = (face.boundingBox.left / frameW).coerceIn(0f, 1f),
+                        top = (face.boundingBox.top / frameH).coerceIn(0f, 1f),
+                        right = (face.boundingBox.right / frameW).coerceIn(0f, 1f),
+                        bottom = (face.boundingBox.bottom / frameH).coerceIn(0f, 1f),
+                        isFrontal = face.isFrontal(maxYaw, maxRoll),
+                        trackingId = face.trackingId,
+                        isMatch = false,
+                    )
                 }
+                val msg = if (activeAlerts.isEmpty()) {
+                    "${allDetected.size} face(s) detected. No active alerts."
+                } else {
+                    "${allDetected.size} face(s) detected. Alerts missing embeddings."
+                }
+                return@withContext ScanFrameResult(
+                    detectedFaces = faceBoxes,
+                    matches = emptyList(),
+                    statusMessage = msg,
+                )
+            }
+
+            val matches = mutableListOf<FaceMatch>()
+            val matchedBoxes = mutableSetOf<Int>() // indices in allDetected
+
+            allDetected.forEachIndexed { index, face ->
+                if (!face.isFrontal(maxYaw, maxRoll)) return@forEachIndexed
+
+                val tile = FacePreprocessor.toModelInput(frame, face)
+                if (!ImageQuality.check(face.boundingBox, tile).ok) return@forEachIndexed
 
                 val raw = extractor.extract(tile)
                 val fused = aggregator.fuse(face.trackingId, raw)
@@ -65,20 +105,47 @@ class FaceMatcher(
                     }
                 }
 
-                val alert = bestAlert ?: return@mapNotNull null
-                // Surface once the evidence is either deep (enough fused frames)
-                // or overwhelming (one very strong frame).
-                val ready = fused.frames >= fusionFrames || bestScore >= strongThreshold
-                if (!ready) return@mapNotNull null
+                val alert = bestAlert ?: return@forEachIndexed
+                // Surface once evidence is accumulated across frames, or single-frame confidence is high (>= 0.60).
+                // This prevents trackingId null-resets from dropping genuine matches.
+                val ready = fused.frames >= fusionFrames || bestScore >= 0.60f || face.trackingId == null
+                if (ready) {
+                    aggregator.forget(face.trackingId)
+                    matchedBoxes.add(index)
+                    matches.add(
+                        FaceMatch(
+                            alertId = alert.id,
+                            confidence = bestScore,
+                            boundingBox = face.boundingBox,
+                            faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
+                            framesFused = fused.frames,
+                        )
+                    )
+                }
+            }
 
-                aggregator.forget(face.trackingId)
-                FaceMatch(
-                    alertId = alert.id,
-                    confidence = bestScore,
-                    boundingBox = face.boundingBox,
-                    faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
-                    framesFused = fused.frames,
+            val faceBoxes = allDetected.mapIndexed { index, face ->
+                FaceBox(
+                    left = (face.boundingBox.left / frameW).coerceIn(0f, 1f),
+                    top = (face.boundingBox.top / frameH).coerceIn(0f, 1f),
+                    right = (face.boundingBox.right / frameW).coerceIn(0f, 1f),
+                    bottom = (face.boundingBox.bottom / frameH).coerceIn(0f, 1f),
+                    isFrontal = face.isFrontal(maxYaw, maxRoll),
+                    trackingId = face.trackingId,
+                    isMatch = index in matchedBoxes,
                 )
             }
+
+            val statusMsg = when {
+                matches.isNotEmpty() -> "Potential match detected!"
+                allDetected.isNotEmpty() -> "Scanning ${allDetected.size} face(s) against ${alertsWithEmbedding.size} alert(s)..."
+                else -> "Point camera at faces"
+            }
+
+            ScanFrameResult(
+                detectedFaces = faceBoxes,
+                matches = matches,
+                statusMessage = statusMsg,
+            )
         }
 }

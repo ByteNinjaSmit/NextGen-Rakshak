@@ -56,7 +56,7 @@ class LoginViewModel(
      * [activityContext] must be the Activity — Credential Manager needs it to
      * show the account picker.
      */
-    fun signInWithGoogle(activityContext: Context, role: String) {
+    fun signInWithGoogle(activityContext: Context) {
         if (_busy.value) return
         viewModelScope.launch {
             _busy.value = true
@@ -67,7 +67,7 @@ class LoginViewModel(
                 val volunteer = Volunteer(
                     id = user.uid,
                     phone = "",
-                    role = role,
+                    role = "volunteer",
                     name = user.displayName.orEmpty(),
                     email = user.email.orEmpty(),
                 )
@@ -78,37 +78,6 @@ class LoginViewModel(
                 // next launch's register() both recover it.
                 runCatching { volunteers.register(volunteer) }
             }.onFailure { _error.value = it.message ?: "Google sign-in failed" }
-            _busy.value = false
-        }
-    }
-
-    /**
-     * Email/password sign-in. [register] creates the account first, for a
-     * volunteer who has not been issued one.
-     */
-    fun signInWithEmail(email: String, password: String, role: String, register: Boolean) {
-        if (_busy.value) return
-        viewModelScope.launch {
-            _busy.value = true
-            _error.value = null
-            runCatching {
-                val user =
-                    if (register) authService.registerWithEmail(email, password)
-                    else authService.signInWithEmail(email, password)
-                val volunteer = Volunteer(
-                    id = user.uid,
-                    phone = "",
-                    role = role,
-                    name = user.displayName.orEmpty(),
-                    email = user.email.orEmpty(),
-                )
-                rejectIfOfficer()
-                store.save(volunteer)
-                // Genuinely best-effort: a failed or slow FCM registration must
-                // not fail a sign-in that already succeeded. onNewToken and the
-                // next launch's register() both recover it.
-                runCatching { volunteers.register(volunteer) }
-            }.onFailure { _error.value = it.message ?: "Sign-in failed" }
             _busy.value = false
         }
     }

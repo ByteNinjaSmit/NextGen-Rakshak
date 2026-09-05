@@ -27,7 +27,7 @@ class VolunteerStore(private val context: Context) {
         Volunteer(
             id = id,
             phone = prefs[Keys.PHONE].orEmpty(),
-            role = prefs[Keys.ROLE] ?: "community",
+            role = prefs[Keys.ROLE] ?: "volunteer",
             name = prefs[Keys.NAME].orEmpty(),
             email = prefs[Keys.EMAIL].orEmpty(),
         )

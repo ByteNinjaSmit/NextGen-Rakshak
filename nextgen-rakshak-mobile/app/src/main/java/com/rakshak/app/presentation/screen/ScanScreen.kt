@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Person
@@ -89,12 +90,23 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val reported by viewModel.reported.collectAsStateWithLifecycle()
     val scanningFor by viewModel.scanningFor.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
+    val detectedFaces by viewModel.detectedFaces.collectAsStateWithLifecycle()
+    val scanStatus by viewModel.scanStatus.collectAsStateWithLifecycle()
 
     var showConfirmation by remember { mutableStateOf(false) }
+    var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var torchOn by remember { mutableStateOf(false) }
     var lastReportedChildName by remember { mutableStateOf("Unknown") }
     var lastReportedLocation by remember { mutableStateOf("Unknown") }
+
+    LaunchedEffect(Unit) {
+        val providerFuture = ProcessCameraProvider.getInstance(context)
+        providerFuture.addListener({
+            cameraProvider = providerFuture.get()
+        }, ContextCompat.getMainExecutor(context))
+    }
 
     LaunchedEffect(reported) {
         if (reported) {
@@ -155,67 +167,124 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Camera Preview
+            // Camera Preview with dynamic lensFacing switching (Defaults to Rear)
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
-                    val previewView = PreviewView(ctx)
-                    val providerFuture = ProcessCameraProvider.getInstance(ctx)
-                    providerFuture.addListener({
-                        val provider = providerFuture.get()
+                    PreviewView(ctx).apply {
+                        scaleType = PreviewView.ScaleType.FILL_CENTER
+                    }
+                },
+                update = { previewView ->
+                    val provider = cameraProvider ?: return@AndroidView
+                    val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
+                    val preview = Preview.Builder().build().also {
+                        it.setSurfaceProvider(previewView.surfaceProvider)
+                    }
 
-                        val analysis = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build()
-                            .apply {
-                                setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                    val analysis = ImageAnalysis.Builder()
+                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                        .build()
+                        .apply {
+                            setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
+                                try {
                                     val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
                                     viewModel.onFrame(upright)
+                                } catch (e: Throwable) {
+                                    android.util.Log.e("ScanScreen", "Analyzer error", e)
+                                } finally {
                                     proxy.close()
                                 }
                             }
+                        }
 
+                    try {
                         provider.unbindAll()
                         camera = provider.bindToLifecycle(
                             lifecycleOwner,
-                            CameraSelector.DEFAULT_BACK_CAMERA,
+                            selector,
                             preview,
                             analysis,
                         )
-                    }, ContextCompat.getMainExecutor(ctx))
-                    previewView
-                },
+                    } catch (e: Throwable) {
+                        android.util.Log.e("ScanScreen", "Camera bind failure for lens $lensFacing", e)
+                    }
+                }
             )
 
-            // Scanning Target Banner
-            if (scanningFor.isNotEmpty()) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(16.dp),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.White.copy(alpha = 0.9f),
-                ) {
-                    Text(
-                        text = "Point camera at people's face",
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                        fontWeight = FontWeight.Medium,
-                        color = Color.DarkGray
+            // Dynamic Face Detection Overlay (Rendered directly on top of camera preview)
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                val canvasW = size.width
+                val canvasH = size.height
+
+                detectedFaces.forEach { face ->
+                    val boxLeft = face.left * canvasW
+                    val boxTop = face.top * canvasH
+                    val boxRight = face.right * canvasW
+                    val boxBottom = face.bottom * canvasH
+
+                    val boxColor = when {
+                        face.isMatch -> SafeGreen
+                        face.isFrontal -> PrimaryBlue
+                        else -> Color(0xFFFFA000) // Amber for non-frontal
+                    }
+
+                    // Draw rounded bounding box
+                    drawRoundRect(
+                        color = boxColor,
+                        topLeft = androidx.compose.ui.geometry.Offset(boxLeft, boxTop),
+                        size = androidx.compose.ui.geometry.Size(
+                            (boxRight - boxLeft).coerceAtLeast(10f),
+                            (boxBottom - boxTop).coerceAtLeast(10f)
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f, 12f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f)
                     )
                 }
             }
 
-            // Face Detection Box Overlay (Decorative)
-            Box(
+            // Fallback guide frame if no faces in view
+            if (detectedFaces.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(220.dp)
+                        .border(2.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(20.dp))
+                )
+            }
+
+            // Scanning Target & Status Banner
+            Surface(
                 modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(200.dp)
-                    .border(3.dp, SafeGreen, RoundedCornerShape(16.dp))
-            )
+                    .align(Alignment.TopCenter)
+                    .padding(16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Color.Black.copy(alpha = 0.7f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val indicatorColor = when {
+                        detectedFaces.any { it.isMatch } -> SafeGreen
+                        detectedFaces.isNotEmpty() -> PrimaryBlue
+                        else -> Color.LightGray
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .background(indicatorColor, CircleShape)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = scanStatus,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                }
+            }
 
             // Bottom Controls — hidden while the match popup is showing.
             if (pending == null) {
@@ -228,23 +297,11 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            IconButton(
-                                onClick = { onReported() },
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .background(PrimaryBlue, CircleShape)
-                            ) {
-                                Icon(Icons.Filled.Stop, contentDescription = "Stop scanning", tint = Color.White, modifier = Modifier.size(32.dp))
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Stop Scan", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
+                        // Torch Toggle
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             IconButton(
                                 onClick = {
@@ -263,6 +320,46 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                                 )
                             }
                             Text("Torch", color = Color.Black, fontSize = 12.sp)
+                        }
+
+                        // Stop Scan
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = { onReported() },
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .background(PrimaryBlue, CircleShape)
+                            ) {
+                                Icon(Icons.Filled.Stop, contentDescription = "Stop scanning", tint = Color.White, modifier = Modifier.size(32.dp))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Stop Scan", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Camera Switch Button (Front / Rear)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            IconButton(
+                                onClick = {
+                                    torchOn = false
+                                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                                        CameraSelector.LENS_FACING_FRONT
+                                    } else {
+                                        CameraSelector.LENS_FACING_BACK
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    Icons.Filled.Cameraswitch,
+                                    contentDescription = "Switch Camera",
+                                    tint = if (lensFacing == CameraSelector.LENS_FACING_FRONT) PrimaryBlue else Color.Black,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                            Text(
+                                if (lensFacing == CameraSelector.LENS_FACING_BACK) "Front Cam" else "Rear Cam",
+                                color = Color.Black,
+                                fontSize = 12.sp
+                            )
                         }
                     }
 

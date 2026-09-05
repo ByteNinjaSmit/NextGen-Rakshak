@@ -10,6 +10,8 @@ import com.rakshak.app.data.repository.AlertRepository
 import com.rakshak.app.data.repository.VolunteerRepository
 import com.rakshak.app.domain.matching.FaceMatcher
 import com.rakshak.app.domain.usecase.ReportMatchUseCase
+import com.rakshak.app.domain.matching.FaceBox
+import com.rakshak.app.domain.matching.ScanFrameResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,11 +66,22 @@ class ScanViewModel(
     private val _scanningFor = MutableStateFlow<List<String>>(emptyList())
     val scanningFor: StateFlow<List<String>> = _scanningFor.asStateFlow()
 
+    /** Real-time detected faces (normalized bounding boxes) for live UI overlay. */
+    private val _detectedFaces = MutableStateFlow<List<FaceBox>>(emptyList())
+    val detectedFaces: StateFlow<List<FaceBox>> = _detectedFaces.asStateFlow()
+
+    /** Live status message for the scanner header. */
+    private val _scanStatus = MutableStateFlow<String>("Looking for faces...")
+    val scanStatus: StateFlow<String> = _scanStatus.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.observeActiveAlerts().collect { alerts ->
                 activeAlerts = alerts
                 _scanningFor.value = alerts.map { it.childName }
+                if (alerts.isEmpty()) {
+                    _scanStatus.value = "No active alerts. Point camera at faces."
+                }
             }
         }
         // A scanning volunteer is on the move; refresh their position so the
@@ -90,10 +103,14 @@ class ScanViewModel(
         if (!busy.compareAndSet(false, true)) return
         viewModelScope.launch {
             try {
-                val hit = runCatching { matcher.match(frame, activeAlerts) }
-                    .onFailure { Log.w(TAG, "Frame match failed; skipping frame", it) }
-                    .getOrNull()
-                    ?.firstOrNull() ?: return@launch
+                val result: ScanFrameResult = runCatching { matcher.scanFrame(frame, activeAlerts) }
+                    .onFailure { Log.w(TAG, "Frame scan failed; skipping frame", it) }
+                    .getOrNull() ?: ScanFrameResult()
+
+                _detectedFaces.value = result.detectedFaces
+                result.statusMessage?.let { _scanStatus.value = it }
+
+                val hit = result.matches.firstOrNull() ?: return@launch
                 val alert = activeAlerts.firstOrNull { it.id == hit.alertId } ?: return@launch
                 _pending.value = PendingMatch(alert, hit.confidence, hit.faceCrop)
             } finally {

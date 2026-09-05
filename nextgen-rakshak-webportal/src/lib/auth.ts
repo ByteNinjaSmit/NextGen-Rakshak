@@ -1,8 +1,8 @@
 import {
   AuthErrorCodes,
   signInWithPopup,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
+  signInWithRedirect,
+  getRedirectResult,
   signOut,
   type User,
 } from "firebase/auth";
@@ -38,8 +38,8 @@ export async function ensureOfficerRole(user: User): Promise<void> {
   }
 }
 
-/** Sign an officer in with Google, then register them as police. */
-export async function signInWithGoogle(): Promise<User> {
+/** Sign an officer in with Google, with redirect fallback if popup fails. */
+export async function signInWithGoogle(): Promise<User | null> {
   let result;
   try {
     result = await signInWithPopup(auth, googleProvider);
@@ -50,7 +50,10 @@ export async function signInWithGoogle(): Promise<User> {
     ) {
       throw new SignInCancelledError("Sign-in was cancelled.");
     }
-    throw err;
+    // Fallback to full-page redirect if popup sign-in fails or throws a Google 500/COOP error
+    console.warn("Popup sign-in failed, attempting redirect sign-in...", err);
+    await signInWithRedirect(auth, googleProvider);
+    return null;
   }
 
   try {
@@ -64,28 +67,18 @@ export async function signInWithGoogle(): Promise<User> {
   return result.user;
 }
 
-/** Sign an officer in with email and password, then register them as police. */
-export async function signInWithEmail(email: string, password: string): Promise<User> {
-  const result = await signInWithEmailAndPassword(auth, email, password);
+/** Process redirect sign-in result after returning from Google OAuth page. */
+export async function handleRedirectResult(): Promise<User | null> {
   try {
-    await ensureOfficerRole(result.user);
+    const result = await getRedirectResult(auth);
+    if (result?.user) {
+      await ensureOfficerRole(result.user);
+      return result.user;
+    }
   } catch (err) {
-    await signOut(auth);
-    throw err;
+    console.error("Redirect sign-in error:", err);
   }
-  return result.user;
-}
-
-/** Register a new officer account with email and password, then register them as police. */
-export async function registerWithEmail(email: string, password: string): Promise<User> {
-  const result = await createUserWithEmailAndPassword(auth, email, password);
-  try {
-    await ensureOfficerRole(result.user);
-  } catch (err) {
-    await signOut(auth);
-    throw err;
-  }
-  return result.user;
+  return null;
 }
 
 /** True if the signed-in user carries the `police` claim. */
@@ -98,3 +91,4 @@ export async function hasOfficerRole(user: User): Promise<boolean> {
 export async function signOutUser(): Promise<void> {
   await signOut(auth);
 }
+

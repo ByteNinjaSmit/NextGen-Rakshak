@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -95,17 +96,66 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
 
     var showConfirmation by remember { mutableStateOf(false) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var lensFacing by remember { mutableStateOf(CameraSelector.LENS_FACING_BACK) }
     var torchOn by remember { mutableStateOf(false) }
     var lastReportedChildName by remember { mutableStateOf("Unknown") }
     var lastReportedLocation by remember { mutableStateOf("Unknown") }
 
+    // One analyzer thread for the whole screen lifetime. Re-creating it per
+    // camera rebind (the previous bug) leaked a thread on every recomposition.
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) {
+        onDispose { analysisExecutor.shutdown() }
+    }
+
     LaunchedEffect(Unit) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener({
             cameraProvider = providerFuture.get()
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    // Bind the camera ONCE per (provider, view, lens) change — never on every
+    // recomposition. The scan status / face-box state updates several times a
+    // second; binding from AndroidView's `update` tore the analysis pipeline
+    // down faster than it could deliver a frame, so ML Kit never saw an image.
+    LaunchedEffect(cameraProvider, previewView, lensFacing) {
+        val provider = cameraProvider ?: return@LaunchedEffect
+        val view = previewView ?: return@LaunchedEffect
+
+        val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
+        val preview = Preview.Builder().build().also {
+            it.setSurfaceProvider(view.surfaceProvider)
+        }
+        val analysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .build()
+            .apply {
+                setAnalyzer(analysisExecutor) { proxy ->
+                    try {
+                        val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
+                        viewModel.onFrame(upright)
+                    } catch (e: Throwable) {
+                        android.util.Log.e("ScanScreen", "Analyzer error", e)
+                    } finally {
+                        proxy.close()
+                    }
+                }
+            }
+
+        try {
+            provider.unbindAll()
+            camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis).also {
+                if (it.cameraInfo.hasFlashUnit()) {
+                    it.cameraControl.enableTorch(torchOn && lensFacing == CameraSelector.LENS_FACING_BACK)
+                }
+            }
+        } catch (e: Throwable) {
+            android.util.Log.e("ScanScreen", "Camera bind failure for lens $lensFacing", e)
+        }
     }
 
     LaunchedEffect(reported) {
@@ -167,7 +217,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Camera Preview with dynamic lensFacing switching (Defaults to Rear)
+            // Camera Preview. Binding is done in the LaunchedEffect above — this
+            // only hands the PreviewView up so the effect can attach a surface.
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { ctx ->
@@ -175,41 +226,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                         scaleType = PreviewView.ScaleType.FILL_CENTER
                     }
                 },
-                update = { previewView ->
-                    val provider = cameraProvider ?: return@AndroidView
-                    val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
-
-                    val preview = Preview.Builder().build().also {
-                        it.setSurfaceProvider(previewView.surfaceProvider)
-                    }
-
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .build()
-                        .apply {
-                            setAnalyzer(Executors.newSingleThreadExecutor()) { proxy ->
-                                try {
-                                    val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
-                                    viewModel.onFrame(upright)
-                                } catch (e: Throwable) {
-                                    android.util.Log.e("ScanScreen", "Analyzer error", e)
-                                } finally {
-                                    proxy.close()
-                                }
-                            }
-                        }
-
-                    try {
-                        provider.unbindAll()
-                        camera = provider.bindToLifecycle(
-                            lifecycleOwner,
-                            selector,
-                            preview,
-                            analysis,
-                        )
-                    } catch (e: Throwable) {
-                        android.util.Log.e("ScanScreen", "Camera bind failure for lens $lensFacing", e)
-                    }
+                update = { view ->
+                    if (previewView !== view) previewView = view
                 }
             )
 

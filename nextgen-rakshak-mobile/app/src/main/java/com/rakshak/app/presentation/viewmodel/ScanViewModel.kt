@@ -82,52 +82,12 @@ class ScanViewModel(
             repository.observeActiveAlerts().collect { alerts ->
                 val processed = withContext(Dispatchers.IO) {
                     alerts.map { alert ->
-                        if (alert.embedding.isNotEmpty()) {
-                            alert
-                        } else {
-                            var bitmap: Bitmap? = null
-                            val thumb = alert.thumbnail
-                            if (thumb != null && thumb.isNotEmpty()) {
-                                bitmap = BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
-                            } else if (alert.imageUrl.isNotBlank()) {
-                                bitmap = runCatching {
-                                    val url = java.net.URL(alert.imageUrl)
-                                    val connection = url.openConnection() as java.net.HttpURLConnection
-                                    connection.connectTimeout = 8000
-                                    connection.readTimeout = 8000
-                                    connection.doInput = true
-                                    connection.connect()
-                                    connection.inputStream.use { stream ->
-                                        BitmapFactory.decodeStream(stream)
-                                    }
-                                }.onFailure {
-                                    Log.e(TAG, "Failed to download alert image from ${alert.imageUrl}", it)
-                                }.getOrNull()
-                            }
-
-                            if (bitmap != null) {
-                                val faces = runCatching {
-                                    com.rakshak.app.ml.MlKitFaceDetector().detect(bitmap)
-                                }.getOrDefault(emptyList())
-
-                                val firstFace = faces.firstOrNull()
-                                val tile = if (firstFace != null) {
-                                    com.rakshak.app.ml.FacePreprocessor.toModelInput(bitmap, firstFace)
-                                } else {
-                                    // Fallback: If ML Kit landmark detector missed, crop center square & scale to 112x112
-                                    com.rakshak.app.ml.FacePreprocessor.cropAndResize(
-                                        bitmap,
-                                        android.graphics.Rect(0, 0, bitmap.width, bitmap.height)
-                                    )
-                                }
-                                val emb = matcher.extractTileEmbedding(tile)
-                                Log.i(TAG, "Extracted ${emb.size}-d embedding on-device for alert ${alert.id} (${alert.childName})")
-                                alert.copy(embedding = emb)
-                            } else {
-                                Log.w(TAG, "No bitmap available for alert ${alert.id} (${alert.childName})")
+                        if (alert.embedding.isNotEmpty()) return@map alert
+                        runCatching { embedAlertOnDevice(alert) }
+                            .getOrElse {
+                                Log.e(TAG, "on-device embed failed for alert ${alert.id} (${alert.childName})", it)
                                 alert
                             }
-                        }
                     }
                 }
                 activeAlerts = processed
@@ -141,6 +101,55 @@ class ScanViewModel(
             }
         }
         viewModelScope.launch { runCatching { volunteerRepository.publishLocation() } }
+    }
+
+    /**
+     * Compute a face embedding for [alert] on-device from its thumbnail bytes or,
+     * failing that, its [Alert.imageUrl]. Runs the same detect -> align -> embed
+     * pipeline the live scanner uses so the two embeddings are directly comparable.
+     */
+    private suspend fun embedAlertOnDevice(alert: Alert): Alert {
+        var bitmap: Bitmap? = null
+        val thumb = alert.thumbnail
+        if (thumb != null && thumb.isNotEmpty()) {
+            bitmap = BitmapFactory.decodeByteArray(thumb, 0, thumb.size)
+        }
+        if (bitmap == null && alert.imageUrl.isNotBlank()) {
+            bitmap = runCatching {
+                val url = java.net.URL(alert.imageUrl)
+                val connection = url.openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 8000
+                connection.readTimeout = 8000
+                connection.doInput = true
+                connection.connect()
+                connection.inputStream.use { stream -> BitmapFactory.decodeStream(stream) }
+            }.onFailure {
+                Log.e(TAG, "Failed to download alert image from ${alert.imageUrl}", it)
+            }.getOrNull()
+        }
+
+        val bmp = bitmap ?: run {
+            Log.w(TAG, "No bitmap available for alert ${alert.id} (${alert.childName})")
+            return alert
+        }
+
+        val faces = runCatching { com.rakshak.app.ml.MlKitFaceDetector().detect(bmp) }
+            .getOrDefault(emptyList())
+        val firstFace = faces.firstOrNull()
+        val tile = if (firstFace != null) {
+            com.rakshak.app.ml.FacePreprocessor.toModelInput(bmp, firstFace)
+        } else {
+            // ML Kit missed the face in the parent photo — fall back to a centred
+            // square crop, mirroring the server / live-scan fallback path.
+            Log.w(TAG, "No face detected in alert photo ${alert.id}; using centre crop")
+            com.rakshak.app.ml.FacePreprocessor.cropAndResize(
+                bmp,
+                android.graphics.Rect(0, 0, bmp.width, bmp.height),
+            )
+        }
+        val emb = matcher.extractTileEmbedding(tile)
+        Log.i(TAG, "Extracted ${emb.size}-d embedding on-device for alert ${alert.id} (${alert.childName})")
+        return alert.copy(embedding = emb)
     }
 
     /**

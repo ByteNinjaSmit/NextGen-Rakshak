@@ -1,6 +1,7 @@
 package com.rakshak.app.domain.matching
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.rakshak.app.data.model.Alert
 import com.rakshak.app.ml.EmbeddingExtractor
 import com.rakshak.app.ml.FaceDetector
@@ -88,30 +89,35 @@ class FaceMatcher(
 
             val matches = mutableListOf<FaceMatch>()
             val matchedBoxes = mutableSetOf<Int>() // indices in allDetected
+            var embedErrors = 0
 
             allDetected.forEachIndexed { index, face ->
                 if (!face.isFrontal(maxYaw, maxRoll)) return@forEachIndexed
 
-                val tile = FacePreprocessor.toModelInput(frame, face)
-                if (!ImageQuality.check(face.boundingBox, tile).ok) return@forEachIndexed
+                // Any failure in this block (alignment, a TFLite shape/op error,
+                // an out-of-bounds crop) must not discard the faces we already
+                // detected — the live tracking overlay and status still need to
+                // render. Swallow per-face, count it, keep going.
+                val faceMatch = try {
+                    val tile = FacePreprocessor.toModelInput(frame, face)
+                    if (!ImageQuality.check(face.boundingBox, tile).ok) return@forEachIndexed
 
-                val raw = extractor.extract(tile)
-                val fused = aggregator.fuse(face.trackingId, raw)
+                    val raw = extractor.extract(tile)
+                    val fused = aggregator.fuse(face.trackingId, raw)
 
-                var bestAlert: Alert? = null
-                var bestScore = threshold
-                for (alert in alertsWithEmbedding) {
-                    val score = comparator.similarity(fused.embedding, alert.embedding)
-                    if (score > bestScore) {
-                        bestScore = score
-                        bestAlert = alert
+                    var bestAlert: Alert? = null
+                    var bestScore = threshold
+                    for (alert in alertsWithEmbedding) {
+                        if (alert.embedding.size != fused.embedding.size) continue
+                        val score = comparator.similarity(fused.embedding, alert.embedding)
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestAlert = alert
+                        }
                     }
-                }
 
-                val alert = bestAlert ?: return@forEachIndexed
-                aggregator.forget(face.trackingId)
-                matchedBoxes.add(index)
-                matches.add(
+                    val alert = bestAlert ?: return@forEachIndexed
+                    aggregator.forget(face.trackingId)
                     FaceMatch(
                         alertId = alert.id,
                         confidence = bestScore,
@@ -119,7 +125,14 @@ class FaceMatcher(
                         faceCrop = FacePreprocessor.cropForDisplay(frame, face.boundingBox),
                         framesFused = fused.frames,
                     )
-                )
+                } catch (e: Throwable) {
+                    embedErrors++
+                    Log.w(TAG, "embed/match failed for a detected face; keeping tracking box", e)
+                    null
+                } ?: return@forEachIndexed
+
+                matchedBoxes.add(index)
+                matches.add(faceMatch)
             }
 
             val faceBoxes = allDetected.mapIndexed { index, face ->
@@ -136,6 +149,8 @@ class FaceMatcher(
 
             val statusMsg = when {
                 matches.isNotEmpty() -> "Potential match detected!"
+                embedErrors > 0 && embedErrors == allDetected.size ->
+                    "Face model error — check ${Constants.MODEL_ASSET}"
                 allDetected.isNotEmpty() -> "Scanning ${allDetected.size} face(s) against ${alertsWithEmbedding.size} alert(s)..."
                 else -> "Point camera at faces"
             }
@@ -146,4 +161,8 @@ class FaceMatcher(
                 statusMessage = statusMsg,
             )
         }
+
+    private companion object {
+        const val TAG = "FaceMatcher"
+    }
 }

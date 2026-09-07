@@ -58,4 +58,52 @@ class EmbeddingAggregatorTest {
         agg.reset()
         assertEquals(1, agg.fuse(2, floatArrayOf(0f, 1f, 0f)).frames)
     }
+
+    // --- track hygiene: the bugs that made the scanner degrade over a session ---
+
+    @Test
+    fun `a track not seen recently is evicted so a recycled id starts clean`() {
+        // ML Kit reuses tracking ids. Without eviction the next face to be handed
+        // id 1 inherits this one's accumulated embedding and the fused vector
+        // lands between two identities — the "only 18-20% after a while" failure.
+        val agg = EmbeddingAggregator(maxFrames = 3, idleTimeoutMillis = 1_000L)
+        val a = floatArrayOf(1f, 0f, 0f, 0f)
+        agg.fuse(1, a, nowMillis = 0L)
+        assertEquals(2, agg.fuse(1, a, nowMillis = 100L).frames)
+
+        agg.evictStale(nowMillis = 5_000L)
+
+        val b = floatArrayOf(0f, 1f, 0f, 0f)
+        val fresh = agg.fuse(1, b, nowMillis = 5_100L)
+        assertEquals(1, fresh.frames)
+        assertEquals(1f, fresh.embedding[1], 1e-5f)
+        assertEquals(0f, fresh.embedding[0], 1e-5f)
+    }
+
+    @Test
+    fun `a frame that disagrees with the track restarts it instead of polluting the mean`() {
+        val agg = EmbeddingAggregator(maxFrames = 3, coherenceFloor = 0.5f)
+        val person = floatArrayOf(1f, 0f, 0f, 0f)
+        agg.fuse(7, person, nowMillis = 0L)
+        agg.fuse(7, person, nowMillis = 10L)
+
+        // Same tracking id, orthogonal embedding: a different face, or a frame so
+        // bad it may as well be. Averaging the two would produce a vector matching
+        // neither.
+        val other = floatArrayOf(0f, 1f, 0f, 0f)
+        val fused = agg.fuse(7, other, nowMillis = 20L)
+
+        assertEquals(1, fused.frames)
+        assertEquals(1f, fused.embedding[1], 1e-5f)
+        assertEquals(0f, fused.embedding[0], 1e-5f)
+    }
+
+    @Test
+    fun `a coherent frame still accumulates`() {
+        val agg = EmbeddingAggregator(maxFrames = 3, coherenceFloor = 0.5f)
+        val a = floatArrayOf(1f, 0f, 0f, 0f)
+        val near = floatArrayOf(0.95f, 0.31f, 0f, 0f)  // cosine ~0.95, same person
+        agg.fuse(2, a, nowMillis = 0L)
+        assertEquals(2, agg.fuse(2, near, nowMillis = 10L).frames)
+    }
 }

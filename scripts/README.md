@@ -14,14 +14,24 @@ server and one computed on a phone are directly comparable.
 | | value |
 |---|---|
 | Input | `[1,112,112,3]` RGB, normalized `(px - 127.5) / 127.5` |
-| Output | `[1,128]` (MobileFaceNet) **or** `[1,512]` (ArcFace upgrade) — length is read at runtime, never assumed |
+| Output | `[1,128]` (MobileFaceNet — what ships) **or** `[1,512]` (ArcFace upgrade) — length is read at runtime, never assumed |
 | Alignment | 3-point similarity warp (left eye, right eye, nose) onto the ArcFace template — `scripts/face_align.py` ↔ `FaceGeometry` (Android) ↔ `TEMPLATE`/`solveSimilarity` (`functions/src/embedding.ts`) |
 | Fallback (no landmarks) | square crop centred on the box, `FACE_CROP_MARGIN = 0.2` |
 | Matching | cosine similarity, threshold **measured, not assumed** — see "Threshold" below |
 
 ---
 
-## Option A — keep the current MobileFaceNet weights
+> **Both artifacts must be generated in the same run.** They are compared to each
+> other at runtime — the server embeds the parent's photo, the phone embeds the
+> live face — so two different models mean two incompatible vector spaces. A
+> width mismatch (a 512-d device model against 128-d server embeddings) is
+> **silent**: nothing crashes, every alert falls out on a length check, and the
+> scanner simply never matches anyone. `AlertIndex` on the device now detects and
+> reports it, but the fix is always to regenerate both from one SavedModel.
+
+---
+
+## Option A — the shipping configuration: MobileFaceNet
 
 Pretrained MobileFaceNet from **[sirius-ai/MobileFaceNet_TF]** (Apache-2.0):
 
@@ -32,14 +42,19 @@ curl -L -o mobilefacenet.pb \
   https://raw.githubusercontent.com/sirius-ai/MobileFaceNet_TF/master/arch/pretrained_model/MobileFaceNet_9925_9680.pb
 
 python scripts/freeze_to_savedmodel.py --pb mobilefacenet.pb --out ./mobilefacenet_savedmodel
-python scripts/convert_models.py --saved-model ./mobilefacenet_savedmodel --precision float16
+python scripts/convert_models.py --saved-model ./mobilefacenet_savedmodel --precision dynamic
 python scripts/verify_parity.py  --saved-model ./mobilefacenet_savedmodel
 python scripts/evaluate_model.py            # measure the threshold on your photos
 ```
 
+Dynamic-range quantisation takes the phone's copy from 5.9 MB to **1.5 MB**.
+`verify_parity.py` then runs one input through both the quantised `.tflite` and
+the source SavedModel: measured **cosine 0.99967**, confirming the quantisation
+did not damage the embedding.
+
 [sirius-ai/MobileFaceNet_TF]: https://github.com/sirius-ai/MobileFaceNet_TF
 
-## Option B — upgrade to a modern ArcFace model (recommended)
+## Option B — upgrade to a modern ArcFace model (not currently shipped)
 
 Same backbone / same on-device latency, much better real-world accuracy. Get
 `w600k_mbf.onnx` from the InsightFace `buffalo_s` pack (or an EdgeFace ONNX):
@@ -104,9 +119,15 @@ otherwise it centre-crops and warns).
 ### History
 
 - Original MobileFaceNet, **unaligned** square crop, 36 pairs: same-person
-  0.7142–0.9899, different-person 0.0864–0.3551 → threshold **0.55** (mid-band).
+  0.7142-0.9899, different-person 0.0864-0.3551 → threshold **0.55** (mid-band).
   The synopsis's 0.75 sat inside the same-person range and missed 5/15 genuine
-  pairs.
+  pairs. **This is the model and the threshold that ship**, with alignment and
+  multi-frame fusion added on top — both of which move genuine pairs further from
+  impostors, so 0.55 keeps at least the headroom it was measured with.
+- A 512-d ArcFace (`w600k_mbf`) device model was trialled and **reverted**: the
+  Cloud Function was still serving the 128-d MobileFaceNet, so alert embeddings
+  and live embeddings had different widths and no comparison ever ran. If the
+  upgrade is revisited, convert *both* artifacts in the same run and re-measure.
 - After adding 3-point alignment / multi-frame fusion / an ArcFace model, the
   same-person band moves **down** (ArcFace cosine for genuine pairs is typically
   ~0.4–0.7, impostors ~0.0–0.3). Do not carry 0.55 over blindly — run the eval.
@@ -114,6 +135,30 @@ otherwise it centre-crops and warns).
 The asymmetry still favours the lower value: a missed child is the failure the
 system exists to prevent; a false candidate costs one "Not a match" tap, and
 every match is human-confirmed by design.
+
+## Geometry must match on both sides — measured
+
+A cosine score is only meaningful when both vectors were produced by the **same
+geometry**. Measured on the shipped 128-d model, one real same-person pair:
+
+| pairing | cosine |
+|---|---|
+| centred crop vs centred crop | **0.8855** |
+| 3-point align vs 3-point align | **0.8467** |
+| **centred crop vs 3-point align, on the _same photo_** | **0.38 - 0.49** |
+
+Either geometry works on its own. Mixing them scores *below the 0.55 threshold on
+an identical face*, so a server running a different geometry than the phone does
+not degrade matching — it silently disables it. That is exactly what happened
+when `ef3998f` gave the device 3-point alignment while the deployed Cloud
+Function was still cropping: every live face scored ~0.2-0.4 against its own
+alert and nothing ever matched.
+
+Because of this the **mobile app now embeds alert photos on-device** (see
+`ScanViewModel.prepare`), so both sides of every comparison come from one
+implementation. The server embedding is kept only as a fallback for when the
+photo cannot be fetched at all. Redeploy `functions` after any change to
+`embedding.ts` so that fallback stays comparable.
 
 ## Verify the running system
 

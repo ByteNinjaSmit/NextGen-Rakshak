@@ -7,19 +7,31 @@ import com.rakshak.app.data.model.MatchReport
 import com.rakshak.app.data.model.Volunteer
 import com.rakshak.app.data.repository.MatchRepository
 import com.rakshak.app.utils.LocationProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Handles a volunteer confirming a match: captures GPS, uploads the captured
  * face as sighting evidence, and submits the report.
  * (SOLID: Single Responsibility — one action, one class.)
+ *
+ * Runs on [Dispatchers.IO]. The caller is a ViewModel coroutine, which starts on
+ * the main thread, and this does JPEG compression and a network upload — doing
+ * that on the main thread freezes the dialog for as long as it takes, which
+ * reads to the volunteer as the Confirm button not working.
  */
 class ReportMatchUseCase(
     private val matchRepository: MatchRepository,
     private val locationProvider: LocationProvider,
     private val photoUploader: SightingPhotoUploader,
 ) {
-    suspend operator fun invoke(alert: Alert, volunteer: Volunteer, confidence: Float, faceCrop: Bitmap) {
+    suspend operator fun invoke(
+        alert: Alert,
+        volunteer: Volunteer,
+        confidence: Float,
+        faceCrop: Bitmap,
+    ) = withContext(Dispatchers.IO) {
         // Bounded: FusedLocation can take ~30 s for a cold fix indoors, and the
         // volunteer is holding a child while the confirm button spins. A sighting
         // recorded without coordinates (hasLocation = false) beats a 30 s hang.

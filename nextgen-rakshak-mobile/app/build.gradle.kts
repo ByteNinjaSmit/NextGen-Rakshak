@@ -83,6 +83,16 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+    testOptions {
+        unitTests {
+            // The JVM's android.jar is stubbed: every method throws unless this is
+            // set. Domain classes such as AlertIndex log through android.util.Log,
+            // which is not something to strip out to please the test runner — the
+            // logging is how a mismatched face model gets diagnosed in the field.
+            // Returning defaults lets those classes be tested as pure logic.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {

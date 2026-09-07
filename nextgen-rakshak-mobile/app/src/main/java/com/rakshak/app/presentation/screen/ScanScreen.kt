@@ -2,9 +2,12 @@ package com.rakshak.app.presentation.screen
 
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import android.util.Size
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Image
@@ -55,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -70,10 +74,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.rakshak.app.data.model.Alert
+import com.rakshak.app.domain.matching.FaceBox
 import com.rakshak.app.presentation.theme.AlertRed
 import com.rakshak.app.presentation.theme.PrimaryBlue
 import com.rakshak.app.presentation.theme.SafeGreen
 import com.rakshak.app.presentation.viewmodel.ScanViewModel
+import com.rakshak.app.utils.Constants
 import com.rakshak.app.utils.Haptics
 import com.rakshak.app.utils.rotate
 import java.text.SimpleDateFormat
@@ -93,6 +99,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val error by viewModel.error.collectAsStateWithLifecycle()
     val detectedFaces by viewModel.detectedFaces.collectAsStateWithLifecycle()
     val scanStatus by viewModel.scanStatus.collectAsStateWithLifecycle()
+    val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
+    val readiness by viewModel.readiness.collectAsStateWithLifecycle()
 
     var showConfirmation by remember { mutableStateOf(false) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
@@ -130,12 +138,34 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             it.setSurfaceProvider(view.surfaceProvider)
         }
         val analysis = ImageAnalysis.Builder()
+            // Only ever work on the newest frame. The pipeline is slower than the
+            // camera, so a queue here would show the volunteer matches from where
+            // they were pointing seconds ago.
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            // Pin the analysis stream to 720p instead of taking CameraX's default.
+            // Resolution is the main lever on detector latency, and detector
+            // latency is the scan rate: 1080p roughly halves the faces scanned per
+            // second in a crowd, while below 720p a child a few metres away falls
+            // under Constants.MIN_FACE_PX and is dropped by the quality gate.
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(Constants.ANALYSIS_WIDTH, Constants.ANALYSIS_HEIGHT),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                        )
+                    )
+                    .build()
+            )
             .build()
             .apply {
                 setAnalyzer(analysisExecutor) { proxy ->
                     try {
+                        // Cheap check first: converting the frame costs two
+                        // full-resolution bitmap allocations, and they are pure
+                        // waste while the pipeline is busy or a match dialog is up.
+                        if (!viewModel.acceptsFrames()) return@setAnalyzer
                         val upright = proxy.toBitmap().rotate(proxy.imageInfo.rotationDegrees)
                         viewModel.onFrame(upright)
                     } catch (e: Throwable) {
@@ -189,6 +219,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             alert = reviewMatch.alert,
             faceCrop = reviewMatch.faceCrop,
             confidence = reviewMatch.confidence,
+            framesFused = reviewMatch.framesFused,
             error = error,
             onReject = viewModel::dismiss,
             onConfirm = {
@@ -204,7 +235,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             TopAppBar(
                 title = { Text("Scanning...", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.dismiss(); onReported() }) {
+                    IconButton(onClick = { viewModel.endSession(); onReported() }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -231,36 +262,13 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 }
             )
 
-            // Dynamic Face Detection Overlay (Rendered directly on top of camera preview)
-            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
-                val canvasW = size.width
-                val canvasH = size.height
-
-                detectedFaces.forEach { face ->
-                    val boxLeft = face.left * canvasW
-                    val boxTop = face.top * canvasH
-                    val boxRight = face.right * canvasW
-                    val boxBottom = face.bottom * canvasH
-
-                    val boxColor = when {
-                        face.isMatch -> SafeGreen
-                        face.isFrontal -> PrimaryBlue
-                        else -> Color(0xFFFFA000) // Amber for non-frontal
-                    }
-
-                    // Draw rounded bounding box
-                    drawRoundRect(
-                        color = boxColor,
-                        topLeft = androidx.compose.ui.geometry.Offset(boxLeft, boxTop),
-                        size = androidx.compose.ui.geometry.Size(
-                            (boxRight - boxLeft).coerceAtLeast(10f),
-                            (boxBottom - boxTop).coerceAtLeast(10f)
-                        ),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(12f, 12f),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f)
-                    )
-                }
-            }
+            // Live face-tracking overlay, drawn straight over the preview.
+            FaceOverlay(
+                faces = detectedFaces,
+                frameWidth = diagnostics.frameWidth,
+                frameHeight = diagnostics.frameHeight,
+                mirrored = lensFacing == CameraSelector.LENS_FACING_FRONT,
+            )
 
             // Fallback guide frame if no faces in view
             if (detectedFaces.isEmpty()) {
@@ -272,34 +280,76 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 )
             }
 
-            // Scanning Target & Status Banner
-            Surface(
+            // Status banner: what the scanner is doing, who it is looking for,
+            // and how fast it is going.
+            Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Color.Black.copy(alpha = 0.7f),
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = Color.Black.copy(alpha = 0.72f),
                 ) {
-                    val indicatorColor = when {
-                        detectedFaces.any { it.isMatch } -> SafeGreen
-                        detectedFaces.isNotEmpty() -> PrimaryBlue
-                        else -> Color.LightGray
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val indicatorColor = when {
+                            readiness.modelMismatch -> AlertRed
+                            detectedFaces.any { it.isMatch } -> SafeGreen
+                            detectedFaces.isNotEmpty() -> PrimaryBlue
+                            readiness.preparing -> Color(0xFFFFA000)
+                            else -> Color.LightGray
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(10.dp)
+                                .background(indicatorColor, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = scanStatus,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            maxLines = 2,
+                        )
                     }
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .background(indicatorColor, CircleShape)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                // Naming the children makes the scan concrete: the volunteer is
+                // looking for Aarav, not running "face recognition".
+                if (scanningFor.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.Black.copy(alpha = 0.55f),
+                    ) {
+                        Text(
+                            text = "Looking for: " + scanningFor.joinToString(", "),
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+
+                // Live throughput. A scan that has silently stalled looks exactly
+                // like one that is running and finding nobody; this is what tells
+                // the two apart, on a real phone, in the field.
+                if (diagnostics.frameMillis > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = scanStatus,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.White,
-                        fontSize = 13.sp
+                        text = "${diagnostics.frameMillis} ms/frame · " +
+                            "${diagnostics.embedded}/${diagnostics.detected} face(s) scanned · " +
+                            "${readiness.alertsReady}/${readiness.alertsTotal} alert(s) ready",
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
                     )
                 }
             }
@@ -343,7 +393,7 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                         // Stop Scan
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             IconButton(
-                                onClick = { onReported() },
+                                onClick = { viewModel.endSession(); onReported() },
                                 modifier = Modifier
                                     .size(64.dp)
                                     .background(PrimaryBlue, CircleShape)
@@ -394,6 +444,114 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
 }
 
 /**
+ * Draws the live tracking boxes over the camera preview.
+ *
+ * The geometry here is not decoration. [FaceBox] coordinates are normalised
+ * against the *analysis* frame, while what the volunteer sees is that frame
+ * cropped to fill the screen ([PreviewView.ScaleType.FILL_CENTER]). Stretching
+ * normalised coordinates straight onto the canvas — which is what this used to
+ * do — leaves every box off the face by the difference between the frame's
+ * aspect ratio and the screen's, which on a modern 20:9 phone is most of a head.
+ * So the same fill-centre transform the preview applies is reproduced: scale by
+ * the larger of the two ratios, then centre the overflow.
+ *
+ * [mirrored] handles the other half of it. PreviewView mirrors the front camera
+ * so the volunteer sees themselves the right way round, but the analysis bitmap
+ * is never mirrored — without flipping x, every box on the selfie lens tracks
+ * the mirror image of the face instead of the face.
+ */
+@Composable
+private fun FaceOverlay(
+    faces: List<FaceBox>,
+    frameWidth: Int,
+    frameHeight: Int,
+    mirrored: Boolean,
+) {
+    // Text on a Compose canvas goes through the native canvas; the paints are
+    // remembered so the overlay does not allocate two objects per face per frame.
+    val labelPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 34f
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
+    val labelBackdrop = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.argb(160, 0, 0, 0)
+            isAntiAlias = true
+        }
+    }
+
+    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+        if (frameWidth <= 0 || frameHeight <= 0) return@Canvas
+        val canvasW = size.width
+        val canvasH = size.height
+
+        val scale = maxOf(canvasW / frameWidth, canvasH / frameHeight)
+        val offsetX = (canvasW - frameWidth * scale) / 2f
+        val offsetY = (canvasH - frameHeight * scale) / 2f
+
+        fun toCanvasX(normalized: Float): Float =
+            (if (mirrored) 1f - normalized else normalized) * frameWidth * scale + offsetX
+
+        faces.forEach { face ->
+            val xs = listOf(toCanvasX(face.left), toCanvasX(face.right))
+            val boxLeft = xs.min()
+            val boxRight = xs.max()
+            val boxTop = face.top * frameHeight * scale + offsetY
+            val boxBottom = face.bottom * frameHeight * scale + offsetY
+
+            val boxColor = when {
+                face.isMatch -> SafeGreen
+                !face.isFrontal -> Color(0xFFFFA000) // amber: turned away, not embedded
+                else -> PrimaryBlue
+            }
+
+            drawRoundRect(
+                color = boxColor,
+                topLeft = androidx.compose.ui.geometry.Offset(boxLeft, boxTop),
+                size = androidx.compose.ui.geometry.Size(
+                    (boxRight - boxLeft).coerceAtLeast(10f),
+                    (boxBottom - boxTop).coerceAtLeast(10f),
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(14f, 14f),
+                // A confirmed match is drawn heavier so it is unmistakable in a
+                // frame that may hold a dozen ordinary tracking boxes.
+                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = if (face.isMatch) 10f else 5f,
+                ),
+            )
+
+            // The per-face score is the single most useful thing on this screen:
+            // it is the difference between "the scanner is running and this is not
+            // the child" and "the scanner is doing nothing". A face that was gated
+            // out has no score, and says why instead.
+            val score = face.score
+            val label = when {
+                face.isMatch -> "MATCH " + (score ?: 0f).percent()
+                score != null -> score.percent()
+                !face.isFrontal -> "look up"
+                else -> null
+            } ?: return@forEach
+
+            val textWidth = labelPaint.measureText(label)
+            val labelTop = (boxTop - 46f).coerceAtLeast(0f)
+            drawContext.canvas.nativeCanvas.apply {
+                drawRoundRect(
+                    boxLeft, labelTop, boxLeft + textWidth + 10f, labelTop + 42f,
+                    8f, 8f, labelBackdrop,
+                )
+                drawText(label, boxLeft + 5f, labelTop + 31f, labelPaint)
+            }
+        }
+    }
+}
+
+private fun Float.percent(): String = "${(this * 100).toInt()}%"
+
+/**
  * Popup shown the moment a face match is detected on the live camera feed:
  * side-by-side compare of the alert's original photo against the face just
  * captured, the alert's details below, and the similarity score — so the
@@ -405,6 +563,7 @@ private fun MatchPopupDialog(
     alert: Alert,
     faceCrop: android.graphics.Bitmap,
     confidence: Float,
+    framesFused: Int,
     error: String?,
     onReject: () -> Unit,
     onConfirm: () -> Unit,
@@ -463,8 +622,31 @@ private fun MatchPopupDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Similarity Score", color = Color.Black, fontWeight = FontWeight.Medium)
-                    Text("${(confidence * 100).toInt()}%", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = PrimaryBlue)
+                    Column {
+                        Text("Similarity Score", color = Color.Black, fontWeight = FontWeight.Medium)
+                        // How the score was reached is part of how much to trust
+                        // it: one strong frame and three agreeing frames are
+                        // different kinds of evidence, and the volunteer is the one
+                        // being asked to make the call.
+                        Text(
+                            if (framesFused > 1) "averaged over $framesFused frames" else "single frame",
+                            color = Color.Gray,
+                            fontSize = 11.sp,
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            "${(confidence * 100).toInt()}%",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            color = if (confidence >= Constants.STRONG_MATCH_THRESHOLD) SafeGreen else PrimaryBlue,
+                        )
+                        Text(
+                            if (confidence >= Constants.STRONG_MATCH_THRESHOLD) "strong" else "possible",
+                            color = Color.Gray,
+                            fontSize = 11.sp,
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

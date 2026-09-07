@@ -63,6 +63,7 @@ class FirestoreMatchSource(
                     return@addSnapshotListener
                 }
                 val reports = snapshot?.documents.orEmpty().map { doc ->
+                    val point = doc.getGeoPoint("location")
                     MatchStatusReport(
                         id = doc.id,
                         alertId = doc.getString("alertId").orEmpty(),
@@ -74,7 +75,20 @@ class FirestoreMatchSource(
                             "dismissed" -> MatchStatus.DISMISSED
                             else -> MatchStatus.PENDING
                         },
-                        timestampMillis = doc.getTimestamp("timestamp")?.toDate()?.time ?: 0L,
+                        // A locally-written document has no server timestamp until
+                        // it is acknowledged, so an unsynced match would sort to the
+                        // bottom with a time of 0. Fall back to the local write time
+                        // so the volunteer's newest report stays at the top.
+                        timestampMillis = doc.getTimestamp("timestamp")?.toDate()?.time
+                            ?: System.currentTimeMillis(),
+                        confidence = doc.getDouble("confidence")?.toFloat() ?: 0f,
+                        latitude = point?.latitude ?: 0.0,
+                        longitude = point?.longitude ?: 0.0,
+                        hasLocation = doc.getBoolean("hasLocation") ?: (point != null),
+                        // Firestore's local cache serves this listener while
+                        // offline; `hasPendingWrites` is how it says "this row is
+                        // yours, and the server has not confirmed it".
+                        pendingSync = doc.metadata.hasPendingWrites(),
                     )
                 }.sortedByDescending { it.timestampMillis }
                 trySend(reports)

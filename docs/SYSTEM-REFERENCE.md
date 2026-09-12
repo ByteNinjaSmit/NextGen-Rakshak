@@ -496,11 +496,15 @@ everywhere via `onSnapshot`.
 | Route | Page |
 |---|---|
 | `/login` | Google sign-in, `?next=` return path, unauthorised message |
-| `/` | Dashboard — stats cards, active alerts, live match preview |
+| `/` | Dashboard — 6 clickable stat tiles, active alerts, live match preview, match-status breakdown chart, top-reporting-volunteers leaderboard, live pulse indicator |
 | `/alerts/new` | File an alert |
-| `/alerts/history` | Every alert, active + resolved |
-| `/matches` | Sighting feed + review dialog |
+| `/alerts/history` | Every alert, active + resolved — status filter, child-name search, pagination |
+| `/matches` | Sighting feed + review dialog — status filter, child-name search, pagination with rows-per-page |
 | `/profile` | Officer identity card + editable profile |
+
+Dashboard stat tiles deep-link into Matches / Alert History with `?status=…`,
+which both routes read on load to preselect their status filter (wrapped in
+`<Suspense>` per-page, since `useSearchParams` requires it).
 
 `app/(kiosk)/layout.tsx` is the guarded shell: sidebar + notification bell, and a
 full-screen loader until the `police` claim is confirmed, so no protected content
@@ -510,10 +514,10 @@ flashes. `error.tsx`, `global-error.tsx`, `not-found.tsx` cover failures.
 
 `alert-form`, `active-alerts-list`, `alert-history-list`, `alert-detail-dialog`,
 `matches-list`, `pending-matches-preview`, `match-review-dialog`, `stats-cards`,
-`sidebar-nav`, `notification-bell`, `officer-identity-card`,
-`officer-profile-form`, `auth-provider`, `login-screen`, `brand-logo`,
-`confirm-dialog`, `full-screen-loader`, and `ui/` (badge, button, card, dialog,
-input, label, select, table, textarea).
+`match-status-chart`, `top-volunteers`, `sidebar-nav`, `notification-bell`,
+`officer-identity-card`, `officer-profile-form`, `auth-provider`,
+`login-screen`, `brand-logo`, `confirm-dialog`, `full-screen-loader`, and
+`ui/` (badge, button, card, dialog, input, label, select, table, textarea).
 
 ### 9.3 Behaviour worth knowing
 
@@ -533,6 +537,20 @@ input, label, select, table, textarea).
   `subscribeActiveAlerts`, `subscribeAllAlerts`, `fetchAlert`,
   `subscribeMatches`, `fetchMatchCounts`. Officer API (`lib/officers.ts`):
   `subscribeOfficer`, `updateOfficerProfile`, `saveOfficerFcmToken`.
+  `fetchMatchCounts()` runs 5 parallel `getCountFromServer` aggregates
+  (total/pending/dispatched/accepted/dismissed) so the dashboard tiles and
+  `match-status-chart` are exact counts, not scoped to `subscribeMatches`'s
+  100-doc live window.
+- **Pagination/filtering** (`matches-list`, `alert-history-list`,
+  `active-alerts-list`): client-side over the already-subscribed live data —
+  status filter, child-name search (search box only renders past a threshold
+  count so it doesn't clutter short lists), and Prev/Next pagination. Live
+  Matches additionally has a rows-per-page select (10/15/25/50).
+- **Kiosk shell scroll**: `app/(kiosk)/layout.tsx` uses `h-dvh` +`min-h-0`
+  through the flex chain so only `<main>` scrolls; `globals.css` sets
+  `html, body { height:100%; overflow:hidden }` as a backstop so the document
+  itself can never scroll (a missing `min-h-0` on a flex item is a classic way
+  to lose this and get the whole page — sidebar included — scrolling instead).
 - PWA: `public/manifest.webmanifest`, icons under `public/icons`,
   `src/app/icon.svg` + `apple-icon.png`, theme colour `#0E2A66`.
 

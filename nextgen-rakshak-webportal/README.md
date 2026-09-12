@@ -14,10 +14,10 @@ subscriptions — nothing polls.
 | Route | Page | Notes |
 |---|---|---|
 | `/login` | Google sign-in | honours `?next=`, shows the reason an account was refused |
-| `/` | Dashboard | stats cards, active alerts, live match preview |
+| `/` | Dashboard | 6 clickable stat tiles (deep-link to a filtered `/matches` or `/alerts/history`), active alerts, live match preview, match-status breakdown chart, top-reporting-volunteers leaderboard, live pulse indicator |
 | `/alerts/new` | File an alert | photo + details + browser GPS |
-| `/alerts/history` | Alert history | active and resolved |
-| `/matches` | Sighting feed | opens the review dialog |
+| `/alerts/history` | Alert history | active and resolved; status filter, child-name search, pagination; reads `?status=` on load |
+| `/matches` | Sighting feed | opens the review dialog; status filter, child-name search, pagination with rows-per-page; reads `?status=` on load |
 | `/profile` | Officer profile | identity card + editable contact fields |
 
 `src/app/(kiosk)/layout.tsx` is the guarded shell (sidebar + notification bell).
@@ -40,6 +40,7 @@ src/
 │   ├── auth-provider.tsx     session + `police` claim in context
 │   ├── login-screen.tsx · sidebar-nav.tsx · brand-logo.tsx
 │   ├── stats-cards.tsx · active-alerts-list.tsx · alert-history-list.tsx
+│   ├── match-status-chart.tsx · top-volunteers.tsx
 │   ├── alert-form.tsx · alert-detail-dialog.tsx
 │   ├── matches-list.tsx · pending-matches-preview.tsx · match-review-dialog.tsx
 │   ├── notification-bell.tsx · officer-identity-card.tsx · officer-profile-form.tsx
@@ -47,7 +48,7 @@ src/
 │   └── ui/                   shadcn primitives (badge, button, card, dialog,
 │                             input, label, select, table, textarea)
 ├── hooks/                    use-alerts (active/all/matches/counts), use-require-officer
-├── lib/                      firebase (init + push), auth, firestore, officers, utils
+├── lib/                      firebase (init + push), auth, firestore, officers, volunteers, utils
 └── types/                    Alert, AlertInput, AlertAuthor, Match, Officer, statuses
 ```
 
@@ -79,7 +80,7 @@ that already has a `volunteers/{uid}` document: one account, one role.
 | `dispatchMatch` / `acceptMatch` / `dismissMatch` | the only mutation the kiosk may make to a match: its `status` |
 | `subscribeActiveAlerts` / `subscribeAllAlerts` / `subscribeMatches` | live feeds |
 | `fetchAlert(id)` | one alert, for the review dialog |
-| `fetchMatchCounts()` | aggregate counts for the dashboard cards |
+| `fetchMatchCounts()` | 5 parallel server-side aggregates (total/pending/dispatched/accepted/dismissed) for the dashboard cards and status chart — exact, not scoped to `subscribeMatches`'s capped live window |
 
 `lib/officers.ts` — `subscribeOfficer`, `updateOfficerProfile` (only
 `displayName / phone / station / badgeNumber`, matching the rules' `hasOnly`
@@ -103,6 +104,19 @@ guard), `saveOfficerFcmToken`.
   than crashing.
 - **PWA / branding** — `public/manifest.webmanifest`, icons in `public/icons`,
   `src/app/icon.svg` + `apple-icon.png`, theme colour `#0E2A66`.
+- **List pagination/filtering** — Live Matches, Alert History and Active
+  Alerts filter/search/paginate client-side over their already-live
+  `onSnapshot` data (no extra reads). A child-name search box only renders
+  once a list is long enough to need it. Live Matches also has a
+  rows-per-page select. Dashboard stat tiles deep-link into Matches / Alert
+  History with `?status=…`, which both pages read on mount via
+  `useSearchParams` (wrapped in `<Suspense>` in their `page.tsx`) to
+  preselect the status filter.
+- **Kiosk shell scroll** — `app/(kiosk)/layout.tsx` scrolls only `<main>`
+  (`h-dvh` + `min-h-0` through the flex chain); `globals.css` sets
+  `html, body { height:100%; overflow:hidden }` as a backstop so a future
+  flex-sizing slip can't turn into the whole document (sidebar included)
+  scrolling instead of just the content pane.
 
 ## Setup
 

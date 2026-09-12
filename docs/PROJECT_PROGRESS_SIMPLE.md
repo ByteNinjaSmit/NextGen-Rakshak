@@ -49,6 +49,20 @@ built and working end-to-end**, as shown by the screenshots in `UI_Images/`.
 Only the optional fixed-camera add-on (Raspberry Pi) is left, and it was
 always scoped as a stretch goal.
 
+**Recent polish (mid-September):**
+- Mobile app redesigned with a consistent color/spacing system and real
+  layouts for a rotated/tablet screen (not just "doesn't look broken sideways").
+- Volunteer's phone number now fills in automatically from their SIM card
+  (picks the right one on a dual-SIM phone), re-checked every time the app
+  opens so it's always the number an officer could actually call.
+- A field test with 3 real phones confirmed the offline phone-to-phone relay
+  holds a stable connection and an alert genuinely hops phone → phone → phone
+  with no internet anywhere — plus two reconnection bugs that only showed up
+  on real hardware (not in earlier testing) were found and fixed.
+- Police web portal dashboard is now interactive: clickable stat tiles that
+  jump straight to a filtered list, a match-status chart, and a leaderboard of
+  the most active volunteers; search/filter/pagination added to the long lists.
+
 ## 5. Why It's Different from Existing Systems
 
 - **Privacy-first**: no face photos or videos are ever uploaded — only the

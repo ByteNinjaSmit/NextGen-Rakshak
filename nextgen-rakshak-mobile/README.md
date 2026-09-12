@@ -17,11 +17,11 @@ tapped alert notification deep-links into Scan once sign-in settles on Home.
 | Screen | What it does |
 |---|---|
 | **Login** | One route: Continue with Google (Credential Manager + `googleid`). Email/password and anonymous guest are both gone. An account carrying the kiosk's `police` claim is refused — one account, one role. |
-| **Home** | Live active alerts (Firestore ∪ mesh), alert detail with photo, share, and publishes the volunteer's GPS so the server can geofence pushes. |
-| **Scan** | CameraX preview, live face boxes, torch, front/back switch (front preview mirrored), readiness header, side-by-side confirm dialog, queued-match counter, haptic buzz on a hit. |
+| **Home** | Live active alerts (Firestore ∪ mesh), alert detail with photo, share, and publishes the volunteer's GPS so the server can geofence pushes. Landscape (a rotated phone, or a tablet) gets a real master-detail split — the alert list stays visible in one pane while the detail fills the other — instead of the detail screen replacing the list. |
+| **Scan** | CameraX preview, live face boxes, torch, front/back switch (front preview mirrored), readiness header, side-by-side confirm dialog, queued-match counter, haptic buzz on a hit. Controls are a bottom bar in portrait and a side rail in landscape (a bottom bar there ate a disproportionate share of the shorter preview height); the confirm dialog splits into two columns (evidence / decision) in landscape instead of one column that could push Confirm/Reject off-screen. Confirm/Reject disable and show a spinner while the report is in flight, so a second tap cannot fire a duplicate mesh relay. |
 | **Matches** | The volunteer's own reports: status (pending / dispatched / accepted / dismissed), the confidence they acted on, coordinates or "no location", and an explicit *still queued on this device* state. Summary counts on top. |
 | **Profile** | Google identity card (avatar re-requested at the rendered size via `AvatarUrl`), SIM phone number with a dual-SIM picker and manual override, cloud-sync state, mesh entry point, sign-out. |
-| **Mesh debug** | Live peer count, packet log, gateway state, and a warning + settings shortcut when the OS Location toggle is off (Nearby discovery needs it even with the permission granted). |
+| **Mesh network** | Rewritten from a bare log dump into a live view: a radar animation while discovery is active, a hero card (peer count, self-online/gateway state), a stats block (packets sent/received/relayed), a peer list by device name with connect time, and a filterable colour-coded activity log — plus the Location-off warning + settings shortcut (Nearby discovery needs it even with the permission granted). |
 
 ## Architecture (clean, SOLID)
 
@@ -50,7 +50,7 @@ com.rakshak.app/
 ├── di/                ServiceLocator (manual DI)
 ├── presentation/
 │   ├── screen/        LoginScreen, HomeScreen, ScanScreen, MatchesScreen, ProfileScreen,
-│   │                  MeshDebugScreen, PermissionRationaleDialog
+│   │                  MeshNetworkScreen, PermissionRationaleDialog
 │   ├── viewmodel/     LoginViewModel, HomeViewModel, ScanViewModel, MatchesViewModel,
 │   │                  ViewModelFactory
 │   ├── navigation/    AppNavigation (Routes)
@@ -134,17 +134,45 @@ this layer re-broadcasting each received packet minus its sender.
   notification shows the live peer count and a Stop action.
 - Learned alerts + seen ids are **persisted to Room** (`MeshStore`) so a restart
   mid-event does not drop them.
-- Live packet log + peer count: **Profile → Mesh Network** (`MeshDebugScreen`).
+- Live radar, stats, peer list and activity log: **Profile → Mesh Network**
+  (`MeshNetworkScreen`).
+- **Reconnect stability**, found and fixed on real hardware (3-device field
+  test): `NEARBY_WIFI_DEVICES` was declared in the manifest but never actually
+  requested at runtime, so on Android 13+ any device but the one that happened
+  to have it pre-granted could accept incoming connections but never run its
+  *own* discovery — permanently, with only a log line. `MeshNetworkManager` now
+  retries `startAdvertising`/`startDiscovery` with backoff on failure, and a
+  15 s watchdog re-arms both whenever a running device has zero peers. Separately,
+  `onEndpointLost` (a *discovery* callback — "the BLE beacon is no longer seen")
+  was wrongly treated as a disconnect: Nearby throttles advertising once paired,
+  so it fires routinely for a link whose `KEEP_ALIVE` traffic is still succeeding
+  both ways, and only a real `onDisconnected` should drop a peer now. With both
+  fixes, three physical phones held a stable mesh (a star topology through
+  whichever device happened to link to both others) and a relayed alert was
+  confirmed hopping two links deep (`ttl` decrementing 6 → 5 across two phones
+  that were never directly paired) — VER-08's remaining gap is measuring
+  hop-relay timing, not whether the mesh holds together.
 
 ## Theme / design system
 
 `presentation/theme/` holds a real system, not per-screen values: full Material 3
-light + dark schemes, `RakshakExtendedColors` (success/warning with
-container/on-container pairs, read via `RakshakExtras.current`), the complete M3
-type scale on the system font, five-step `RakshakShapes` + `PillShape`, a
-`Spacing` scale (4 dp base, `xxs…xxl`), an `Elevation` scale, and
+light + dark schemes (a Signal Red + Graphite palette — the one color a
+volunteer scanning a crowd in daylight needs to spot instantly is used sparingly
+so it keeps that meaning, and reject/danger is a separate darker red so "not the
+child" never reads as the brand color), `RakshakExtendedColors` (success/warning
+with container/on-container pairs, read via `RakshakExtras.current`), the
+complete M3 type scale on the system font, five-step `RakshakShapes` +
+`PillShape`, a `Spacing` scale (4 dp base, `xxs…xxl`), an `Elevation` scale, and
 `rememberWindowInfo()` for orientation + COMPACT/MEDIUM/EXPANDED width classes.
-Screen migration onto it is in progress.
+
+Every screen is migrated onto it — no screen references a raw `Color(0x…)` or a
+one-off `dp` value anymore. Each screen also has a real landscape layout, not
+just "doesn't clip": Home's master-detail split, Scan's control rail and
+two-column match dialog, and a scrollable Profile (see the Screens table above)
+were all found to overflow or misplace content in landscape before this pass —
+in Home/Profile's case, content (including the Start Scanning button and
+Logout) could be pushed off-screen with no way to scroll to it at all, which
+the fix treats as a correctness bug, not a polish item.
 
 ## Permissions
 

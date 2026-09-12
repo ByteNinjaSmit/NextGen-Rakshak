@@ -194,11 +194,11 @@ notification deep-links to Scan once sign-in has settled on Home.
 | Screen | What it does |
 |---|---|
 | **Login** | One action: Continue with Google (Credential Manager + `googleid`). Rejects an account carrying the `police` claim. |
-| **Home** | Live active-alert list (Firestore ∪ mesh), alert detail with photo, share, and publishes the volunteer's GPS on load for the geofence. |
-| **Scan** | CameraX preview, live face boxes, torch toggle, front/back camera switch (front preview mirrored), readiness header, match-confirm dialog, queued-match counter, haptic buzz on a hit. |
+| **Home** | Live active-alert list (Firestore ∪ mesh), alert detail with photo, share, and publishes the volunteer's GPS on load for the geofence. Landscape gets a real master-detail split (list stays visible, detail fills the other pane) instead of the detail replacing the list. |
+| **Scan** | CameraX preview, live face boxes, torch toggle, front/back camera switch (front preview mirrored), readiness header, match-confirm dialog, queued-match counter, haptic buzz on a hit. Controls are a bottom bar in portrait, a side rail in landscape; the confirm dialog splits into a two-column evidence/decision layout in landscape. Confirm/Reject disable + show a spinner while the report is in flight (no duplicate relay from a second tap). |
 | **Matches** | The volunteer's own reports with status (pending / dispatched / accepted / dismissed), confidence, coordinates or "no location", and an explicit **still queued on this device** state. Summary counts on top. |
-| **Profile** | Google identity card (avatar re-requested at the rendered size via `AvatarUrl`), SIM-based phone number with dual-SIM picker and manual override, cloud-sync state, mesh entry point, sign-out. |
-| **Mesh debug** | Live peer count, packet log, gateway state, and a warning + settings shortcut when the OS **Location** toggle is off (Nearby discovery needs it even when the permission is granted). |
+| **Profile** | Google identity card (avatar re-requested at the rendered size via `AvatarUrl`), SIM-based phone number with dual-SIM picker and manual override, cloud-sync state, mesh entry point, sign-out. Scrolls in both orientations — the identity block + 4-item menu (Logout included) could otherwise exceed a landscape phone's height with no way to reach the bottom item. |
+| **Mesh network** | Rewritten from a bare log dump into a live view: radar animation while discovery is active, a hero card (peer count, self-online/gateway state), packet stats, a peer list by device name, and a filterable colour-coded activity log — plus the Location-off warning + settings shortcut (Nearby discovery needs it even with the permission granted). |
 
 ### 5.2 Package layout
 
@@ -226,7 +226,7 @@ com.rakshak.app/
 │                      MeshSeenCache, MeshThumbnail, MeshService (foreground)
 ├── di/                ServiceLocator
 ├── presentation/
-│   ├── screen/        Login, Home, Scan, Matches, Profile, MeshDebug, PermissionRationaleDialog
+│   ├── screen/        Login, Home, Scan, Matches, Profile, MeshNetworkScreen, PermissionRationaleDialog
 │   ├── viewmodel/     Login, Home, Scan, Matches, ViewModelFactory
 │   ├── navigation/    AppNavigation (Routes)
 │   └── theme/         Theme, Color, ExtendedColors, Type, Shape, Spacing, WindowInfo
@@ -299,16 +299,27 @@ instead of being dropped while the dialog is up.
    written to the Room queue **and** relayed over the mesh. `MatchSyncWorker`
    (WorkManager, connectivity-gated) drains the queue later.
 
-### 5.7 Design system (in progress in a parallel session)
+### 5.7 Design system
 
-`presentation/theme/` now carries a real system rather than ad-hoc values: full
-Material 3 light + dark `ColorScheme`s, `RakshakExtendedColors`
-(success/warning with container pairs, via `RakshakExtras.current`), the complete
-M3 type scale on the system font, a five-step `RakshakShapes` + `PillShape`, a
-`Spacing` scale (4 dp base, `xxs…xxl`) and `Elevation` scale, and
-`rememberWindowInfo()` for orientation + COMPACT/MEDIUM/EXPANDED width classes.
-Screens are being migrated onto it; that work is **uncommitted** at the time of
-writing.
+`presentation/theme/` carries a real system rather than ad-hoc values: full
+Material 3 light + dark `ColorScheme`s on a Signal Red + Graphite palette
+(reject/danger is a deliberately separate, darker red so it never reads as the
+brand color), `RakshakExtendedColors` (success/warning with container pairs,
+via `RakshakExtras.current`), the complete M3 type scale on the system font, a
+five-step `RakshakShapes` + `PillShape`, a `Spacing` scale (4 dp base,
+`xxs…xxl`) and `Elevation` scale, and `rememberWindowInfo()` for orientation +
+COMPACT/MEDIUM/EXPANDED width classes. Every screen is migrated onto it.
+
+Each screen also got a real landscape layout, not just clip-avoidance: Home is
+a master-detail split (list stays visible, detail fills the other pane) instead
+of the detail replacing the list; Scan's controls are a side rail instead of a
+bottom bar (which ate a disproportionate share of a landscape frame's shorter
+height); the match-confirmation dialog splits into a two-column evidence /
+decision layout instead of one long column. Home's detail pane and Profile's
+menu had no scroll at all in the previous layout — in landscape, content
+including the **Start Scanning** button and **Logout** could be pushed off the
+bottom of the screen with no way to reach it; both are now a fixed footer
+outside an independently scrollable content region.
 
 ### 5.8 Permissions (`AndroidManifest.xml`)
 
@@ -431,6 +442,38 @@ up to **3 tries** until the ACK arrives or it comes online itself.
 A `RESOLVE` packet floods like an alert, because an offline phone has no other way
 to learn a case closed — the alert just vanishes from a Firestore query, and
 absence does not reach a peer with no internet.
+
+### 7.4 Reconnect stability (found on real hardware, VER-08)
+
+A 3-physical-device field test surfaced two bugs that unit tests could not
+reach, both in `MeshNetworkManager`:
+
+1. `NEARBY_WIFI_DEVICES` was declared in the manifest but never actually
+   requested at runtime. On Android 13+, any device other than the one that
+   happened to have it pre-granted could accept incoming connections (someone
+   else's discovery found it) but could never run its **own** discovery —
+   permanently, with nothing but a `MISSING_PERMISSION_NEARBY_WIFI_DEVICES` log
+   line. Fixed by adding it to `MainActivity.requiredPermissions()`. Fixed
+   alongside: `startAdvertising`/`startDiscovery` now retry with backoff on
+   failure, and a 15 s watchdog re-arms both whenever a running device has zero
+   peers — previously a single cold-start failure disabled that half of
+   discovery for the rest of the session.
+2. `onEndpointLost` — a **discovery** callback meaning "the BLE beacon is no
+   longer seen" — was wired to the same disconnect logic as a real
+   `ConnectionLifecycleCallback.onDisconnected`. Nearby commonly throttles or
+   stops advertising once a peer is paired, so this fired routinely for a link
+   whose `KEEP_ALIVE` traffic (confirmed via the system `NearbyConnections` log)
+   was succeeding both ways the whole time, zeroing the peer count — and the
+   confirmed-match mesh relay with it — for a connection that was never
+   actually down.
+
+With both fixed, three phones held a stable mesh (a star topology, since which
+device links to which is up to Nearby's discovery timing rather than something
+the app controls) for the length of the trial, and a relayed alert was traced
+hopping two links deep — `ttl` decrementing 6 → 5 — between two phones that
+were never directly paired, confirming multi-hop relay end-to-end. The
+remaining open item is measuring hop-relay timing under load, not whether the
+mesh itself holds together.
 
 ---
 

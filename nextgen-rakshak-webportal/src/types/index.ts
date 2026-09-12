@@ -75,6 +75,29 @@ export type OfficerProfileInput = Pick<
   "displayName" | "phone" | "station" | "badgeNumber"
 >;
 
+/**
+ * A volunteer's account record (`volunteers/{uid}`) — the device/account data
+ * behind a match's `volunteerId`. Read-only from the kiosk; written by the
+ * mobile app only. Absent fields mean the volunteer never reached that step
+ * (e.g. `lastLocation` before their first location permission grant).
+ */
+export interface Volunteer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  photoUrl?: string;
+  role: string;
+  /** When this SIM-backed or manually typed number was last (re)confirmed. */
+  phoneUpdatedAt?: Timestamp;
+  registeredAt?: Timestamp;
+  /** Last GPS fix published by the volunteer's device, for the geofence check. */
+  lastLocation?: GeoPoint;
+  locationUpdatedAt?: Timestamp;
+  /** Present once the device has granted notification permission and registered for push. */
+  fcmToken?: string;
+}
+
 /** A confirmed match reported by a volunteer scanning the crowd. */
 export interface Match {
   id: string;

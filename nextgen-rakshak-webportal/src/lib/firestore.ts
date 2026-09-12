@@ -132,12 +132,28 @@ export function subscribeMatches(cb: (matches: Match[]) => void): Unsubscribe {
  *
  * Counting the live feed would silently cap at MATCH_FEED_LIMIT and report a
  * frozen number as fact, so the counts come from server-side aggregations —
- * one read each, no documents transferred.
+ * one read each, no documents transferred — covering every status so the
+ * dashboard's breakdown chart is exact rather than scoped to the live window.
  */
-export async function fetchMatchCounts(): Promise<{ total: number; pending: number }> {
-  const [total, pending] = await Promise.all([
+export async function fetchMatchCounts(): Promise<{
+  total: number;
+  pending: number;
+  dispatched: number;
+  accepted: number;
+  dismissed: number;
+}> {
+  const [total, pending, dispatched, accepted, dismissed] = await Promise.all([
     getCountFromServer(matchesRef),
     getCountFromServer(query(matchesRef, where("status", "==", "pending"))),
+    getCountFromServer(query(matchesRef, where("status", "==", "dispatched"))),
+    getCountFromServer(query(matchesRef, where("status", "==", "accepted"))),
+    getCountFromServer(query(matchesRef, where("status", "==", "dismissed"))),
   ]);
-  return { total: total.data().count, pending: pending.data().count };
+  return {
+    total: total.data().count,
+    pending: pending.data().count,
+    dispatched: dispatched.data().count,
+    accepted: accepted.data().count,
+    dismissed: dismissed.data().count,
+  };
 }

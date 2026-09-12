@@ -31,4 +31,14 @@ data class Volunteer(
      * number because nothing changed the second time.
      */
     val phoneSynced: Boolean = false,
+    /**
+     * False while [name]/[email]/[photoUrl] have not made it to `volunteers/{uid}`
+     * yet. Local-only, like [phoneSynced] — without it, a `register()` call that
+     * fails once (offline, a rules rejection) never retries: [LoginViewModel]'s
+     * identity refresh only re-pushes on a *change* to the Google profile, so an
+     * account whose first write never landed would otherwise stay missing its
+     * email/photo in Firestore forever, even though the device itself has always
+     * known them.
+     */
+    val identitySynced: Boolean = false,
 )

@@ -28,7 +28,7 @@ export default function Error({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="break-words rounded-md bg-muted p-3 text-xs text-muted-foreground">
+          <p className="break-words rounded-lg bg-muted p-3 text-xs text-muted-foreground">
             {error.message || "Unknown error"}
             {error.digest && ` (${error.digest})`}
           </p>

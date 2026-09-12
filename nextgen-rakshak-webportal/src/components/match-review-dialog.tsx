@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { useEffect, useState } from "react";
-import { ImageOff, Loader2 } from "lucide-react";
+import { ImageOff, Loader2, Phone, Mail, MapPin, CalendarClock, Radio } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { acceptMatch, dismissMatch, fetchAlert } from "@/lib/firestore";
-import { timeAgo } from "@/lib/utils";
+import { useVolunteer } from "@/hooks/use-alerts";
+import { formatTime, timeAgo } from "@/lib/utils";
 import type { Alert, Match } from "@/types";
 
 interface MatchReviewDialogProps {
@@ -26,13 +27,117 @@ function PhotoOrFallback({ src, alt }: { src: string; alt: string }) {
   if (!src)
     return (
       <div
-        className="flex h-40 w-full items-center justify-center rounded-md bg-muted"
+        className="flex h-40 w-full items-center justify-center rounded-lg bg-muted"
         title="Photo unavailable"
       >
         <ImageOff className="h-8 w-8 text-muted-foreground" />
       </div>
     );
-  return <img src={src} alt={alt} className="h-40 w-full rounded-md object-cover" />;
+  return <img src={src} alt={alt} className="h-40 w-full rounded-lg object-cover" />;
+}
+
+function mapsLink(location: { latitude: number; longitude: number }) {
+  return `https://www.google.com/maps?q=${location.latitude},${location.longitude}`;
+}
+
+/**
+ * Full account/device record behind `match.volunteerId` — everything the
+ * kiosk knows about who this sighting came from, beyond the name/role already
+ * denormalised onto the match: phone, email, when the account registered, and
+ * where that device last published a GPS fix.
+ */
+function VolunteerAccountPanel({ match }: { match: Match }) {
+  const { volunteer, loading } = useVolunteer(match.volunteerId);
+  const { volunteer: relay } = useVolunteer(match.relayedBy);
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-3">
+          {volunteer?.photoUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element -- Google avatar, external host */
+            <img
+              src={volunteer.photoUrl}
+              alt=""
+              className="h-10 w-10 shrink-0 rounded-full bg-muted object-cover"
+            />
+          ) : (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
+              {(match.volunteerName || volunteer?.name || "?").trim()[0]?.toUpperCase() ?? "?"}
+            </div>
+          )}
+          <div>
+            <p className="font-medium">{match.volunteerName || volunteer?.name || "Name not provided"}</p>
+            <p className="text-xs capitalize text-muted-foreground">{match.volunteerRole}</p>
+          </div>
+        </div>
+        {match.relayedBy && (
+          <span
+            className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground"
+            title="Carried to the server by another volunteer's phone over the offline mesh. The reporter is named by that relay rather than proven by their own session."
+          >
+            <Radio className="h-3 w-3" />
+            via mesh
+          </span>
+        )}
+      </div>
+
+      {loading && <p className="text-xs text-muted-foreground">Loading account details…</p>}
+
+      {!loading && !volunteer && (
+        <p className="text-xs text-muted-foreground">
+          No matching volunteer account found — this device may have signed in through the
+          phone-only demo path.
+        </p>
+      )}
+
+      {volunteer && (
+        <div className="grid gap-1.5 border-t pt-2 sm:grid-cols-2">
+          {volunteer.phone && (
+            <a
+              href={`tel:${volunteer.phone}`}
+              className="flex items-center gap-1.5 text-foreground hover:underline"
+            >
+              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+              {volunteer.phone}
+            </a>
+          )}
+          {volunteer.email && (
+            <span className="flex items-center gap-1.5 truncate">
+              <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              {volunteer.email}
+            </span>
+          )}
+          {volunteer.registeredAt && (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Registered {formatTime(volunteer.registeredAt)} on{" "}
+              {volunteer.registeredAt.toDate().toLocaleDateString()}
+            </span>
+          )}
+          {volunteer.lastLocation && (
+            <a
+              href={mapsLink(volunteer.lastLocation)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-foreground hover:underline"
+              title="Last GPS fix published by this device"
+            >
+              <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+              Device location{volunteer.locationUpdatedAt && ` · ${timeAgo(volunteer.locationUpdatedAt)}`}
+            </a>
+          )}
+        </div>
+      )}
+
+      {match.relayedBy && (
+        <p className="border-t pt-2 text-xs text-muted-foreground">
+          Relayed via {relay?.name || relay?.phone || "another volunteer's device"} over the
+          offline mesh.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProps) {
@@ -88,21 +193,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
               </DialogDescription>
             </DialogHeader>
 
-            <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground">Reported By</p>
-                <p className="font-medium">{match.volunteerName || "Name not provided"}</p>
-                <p className="text-xs capitalize text-muted-foreground">{match.volunteerRole}</p>
-              </div>
-              {match.relayedBy && (
-                <span
-                  className="whitespace-nowrap text-xs text-muted-foreground"
-                  title="Carried to the server by another volunteer's phone over the offline mesh. The reporter is named by that relay rather than proven by their own session."
-                >
-                  via mesh
-                </span>
-              )}
-            </div>
+            <VolunteerAccountPanel match={match} />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">

@@ -282,17 +282,24 @@ class LoginViewModel(
      * push any change through. The photo is the one the officer sees next to a
      * reported sighting, so a volunteer who has since changed it should not still
      * be represented by the one captured at their first sign-in.
+     *
+     * Also retries whenever [Volunteer.identitySynced] is false, not just on a
+     * changed profile — otherwise a `register()` call that failed once (offline,
+     * a since-fixed rules rejection) never gets another attempt, because nothing
+     * about the Google profile itself ever "changes" again. That leaves the
+     * `volunteers/{uid}` doc permanently missing email/photo even though the
+     * device has known them the whole time.
      */
     private suspend fun refreshIdentity(current: Volunteer) {
         val profile = authService.currentProfile ?: return
         val name = profile.displayName.orEmpty().ifBlank { current.name }
         val email = profile.email.orEmpty().ifBlank { current.email }
         val photoUrl = profile.photoUrl.orEmpty().ifBlank { current.photoUrl }
-        if (name == current.name && email == current.email && photoUrl == current.photoUrl) return
-        runCatching {
-            store.saveIdentity(name, email, photoUrl)
-            volunteers.updateIdentity(current.id, name, email, photoUrl)
-        }
+        val changed = name != current.name || email != current.email || photoUrl != current.photoUrl
+        if (!changed && current.identitySynced) return
+        store.saveIdentity(name, email, photoUrl, synced = false)
+        val pushed = runCatching { volunteers.updateIdentity(current.id, name, email, photoUrl) }.isSuccess
+        if (pushed) store.saveIdentity(name, email, photoUrl, synced = true)
     }
 
     // --- sign-in / sign-out --------------------------------------------------
@@ -333,6 +340,7 @@ class LoginViewModel(
                 // next launch's register() both recover it.
                 runCatching { volunteers.register(volunteer) }
                     .onSuccess {
+                        store.saveIdentity(volunteer.name, volunteer.email, volunteer.photoUrl, synced = true)
                         if (volunteer.phone.isNotBlank()) {
                             store.savePhone(volunteer.phone, subscriptionId, manual = false, synced = true)
                         }

@@ -9,7 +9,7 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">Officer Profile</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Officer Profile</h1>
         <p className="text-muted-foreground">
           Your kiosk record. Contact details are shown to the control room when you dispatch a
           match.

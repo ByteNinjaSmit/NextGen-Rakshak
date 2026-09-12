@@ -25,6 +25,7 @@ class VolunteerStore(private val context: Context) {
         val SIM_SUB_ID = intPreferencesKey("simSubscriptionId")
         val PHONE_MANUAL = booleanPreferencesKey("phoneIsManual")
         val PHONE_SYNCED = booleanPreferencesKey("phoneSynced")
+        val IDENTITY_SYNCED = booleanPreferencesKey("identitySynced")
     }
 
     /** Emits the current volunteer, or null when signed out. */
@@ -40,6 +41,7 @@ class VolunteerStore(private val context: Context) {
             simSubscriptionId = prefs[Keys.SIM_SUB_ID] ?: -1,
             phoneIsManual = prefs[Keys.PHONE_MANUAL] ?: false,
             phoneSynced = prefs[Keys.PHONE_SYNCED] ?: false,
+            identitySynced = prefs[Keys.IDENTITY_SYNCED] ?: false,
         )
     }
 
@@ -54,6 +56,7 @@ class VolunteerStore(private val context: Context) {
             prefs[Keys.SIM_SUB_ID] = volunteer.simSubscriptionId
             prefs[Keys.PHONE_MANUAL] = volunteer.phoneIsManual
             prefs[Keys.PHONE_SYNCED] = volunteer.phoneSynced
+            prefs[Keys.IDENTITY_SYNCED] = volunteer.identitySynced
         }
     }
 
@@ -74,11 +77,12 @@ class VolunteerStore(private val context: Context) {
     }
 
     /** Patch the fields Google owns, so a changed display name or avatar lands. */
-    suspend fun saveIdentity(name: String, email: String, photoUrl: String) {
+    suspend fun saveIdentity(name: String, email: String, photoUrl: String, synced: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.NAME] = name
             prefs[Keys.EMAIL] = email
             prefs[Keys.PHOTO_URL] = photoUrl
+            prefs[Keys.IDENTITY_SYNCED] = synced
         }
     }
 

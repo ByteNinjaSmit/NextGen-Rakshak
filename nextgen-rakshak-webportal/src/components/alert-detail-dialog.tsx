@@ -30,11 +30,11 @@ export function AlertDetailDialog({ alert, onOpenChange }: AlertDetailDialogProp
                 <img
                   src={alert.imageUrl}
                   alt={alert.childName}
-                  className="h-32 w-32 shrink-0 rounded-md object-cover"
+                  className="h-32 w-32 shrink-0 rounded-lg object-cover"
                 />
               ) : (
                 <div
-                  className="flex h-32 w-32 shrink-0 items-center justify-center rounded-md bg-muted"
+                  className="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-muted"
                   title="Photo deleted — case resolved"
                 >
                   <ImageOff className="h-8 w-8 text-muted-foreground" />

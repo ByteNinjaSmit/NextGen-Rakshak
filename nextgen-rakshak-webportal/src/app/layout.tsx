@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 // file convention). PWA icons are declared in /public/manifest.webmanifest.
 
 export const viewport: Viewport = {
-  themeColor: "#0E2A66",
+  themeColor: "#152F65",
 };
 
 /**

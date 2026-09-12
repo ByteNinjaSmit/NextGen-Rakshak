@@ -6,9 +6,9 @@ export const metadata: Metadata = { title: "New Alert" };
 
 export default function NewAlertPage() {
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
       <header>
-        <h1 className="text-3xl font-bold tracking-tight">New Alert</h1>
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">New Alert</h1>
         <p className="text-muted-foreground">
           Report a missing child. On submit, the photo is uploaded and pushed to all volunteers
           within range.

@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { fetchMatchCounts, subscribeActiveAlerts, subscribeAllAlerts, subscribeMatches } from "@/lib/firestore";
-import type { Alert, Match } from "@/types";
+import { fetchVolunteer } from "@/lib/volunteers";
+import type { Alert, Match, Volunteer } from "@/types";
 
 /** Live list of active alerts from Firestore. */
 export function useActiveAlerts() {
@@ -63,13 +64,19 @@ export function useMatchCounts() {
   const { matches } = useMatches();
   // null until the first aggregate lands: seeding with zeroes would state
   // "no matches" as fact during the round-trip, mid-incident.
-  const [counts, setCounts] = useState<{ total: number; pending: number } | null>(null);
+  const [counts, setCounts] = useState<{
+    total: number;
+    pending: number;
+    dispatched: number;
+    accepted: number;
+    dismissed: number;
+  } | null>(null);
 
-  // Cheap change signal: a new sighting changes the newest id, a dispatch
-  // changes the pending tally within the window.
-  const signal = `${matches.length}:${matches[0]?.id ?? ""}:${
-    matches.filter((m) => m.status === "pending").length
-  }`;
+  // Cheap change signal: a new sighting changes the newest id, any status
+  // flip changes the per-status tally within the window.
+  const signal = `${matches.length}:${matches[0]?.id ?? ""}:${["pending", "dispatched", "accepted", "dismissed"]
+    .map((s) => matches.filter((m) => m.status === s).length)
+    .join(",")}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -84,4 +91,49 @@ export function useMatchCounts() {
   }, [signal]);
 
   return counts;
+}
+
+// Module-level so every row on a page (matches list, review dialog) that names
+// the same volunteer shares one read instead of each firing its own getDoc.
+const volunteerCache = new Map<string, Volunteer | null>();
+
+/**
+ * The account/device record behind a match's `volunteerId` — name, phone,
+ * email and last known location, beyond what's denormalised onto the match.
+ * One-shot (not live): a sighting is a snapshot in time, and the reviewing
+ * officer cares who reported it, not whether they've since changed their name.
+ */
+export function useVolunteer(uid?: string) {
+  const [volunteer, setVolunteer] = useState<Volunteer | null>(
+    uid ? volunteerCache.get(uid) ?? null : null,
+  );
+  const [loading, setLoading] = useState(!!uid && !volunteerCache.has(uid));
+
+  useEffect(() => {
+    if (!uid) {
+      setVolunteer(null);
+      setLoading(false);
+      return;
+    }
+    if (volunteerCache.has(uid)) {
+      setVolunteer(volunteerCache.get(uid) ?? null);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetchVolunteer(uid)
+      .then((record) => {
+        volunteerCache.set(uid, record);
+        if (!cancelled) setVolunteer(record);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [uid]);
+
+  return { volunteer, loading };
 }

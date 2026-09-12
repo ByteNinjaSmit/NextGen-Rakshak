@@ -120,9 +120,9 @@ export function NotificationBell() {
       )}
 
       {open && permission === "granted" && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-md border bg-white shadow-lg">
-          <div className="border-b px-4 py-2 text-sm font-semibold">Notifications</div>
-          <div className="max-h-80 overflow-y-auto">
+        <div className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border bg-card shadow-elevated">
+          <div className="border-b px-4 py-2.5 text-sm font-semibold">Notifications</div>
+          <div className="max-h-80 overflow-y-auto scrollbar-thin">
             {notifications.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
             ) : (

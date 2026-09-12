@@ -50,7 +50,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.rakshak.app.data.model.Alert
 import com.rakshak.app.presentation.theme.RakshakExtras
 import com.rakshak.app.presentation.theme.Spacing
@@ -279,14 +279,23 @@ private fun AlertRow(alert: Alert, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun AlertThumbnail(imageUrl: String, size: androidx.compose.ui.unit.Dp) {
     if (imageUrl.isNotBlank()) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = imageUrl,
             contentDescription = "Child Photo",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(size)
                 .clip(MaterialTheme.shapes.small)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            error = {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
         )
     } else {
         Box(
@@ -396,14 +405,24 @@ fun AlertDetailsScreen(
 @Composable
 private fun AlertPhoto(imageUrl: String, size: androidx.compose.ui.unit.Dp) {
     if (imageUrl.isNotBlank()) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = imageUrl,
             contentDescription = "Child Photo",
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .size(size)
                 .clip(MaterialTheme.shapes.large)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            error = {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(size / 2),
+                    )
+                }
+            },
         )
     } else {
         Box(

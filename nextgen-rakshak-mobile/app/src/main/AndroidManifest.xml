@@ -22,6 +22,10 @@
     <!-- Buzz the volunteer on a candidate match; they are watching the crowd, not the screen. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Auto-fill the volunteer's own number from the SIM instead of asking them to type it. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+
     <!-- Keep the offline mesh relaying while the app is backgrounded / screen locked -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />

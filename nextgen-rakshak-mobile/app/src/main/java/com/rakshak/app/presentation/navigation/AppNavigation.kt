@@ -34,7 +34,7 @@ import com.rakshak.app.di.ServiceLocator
 import com.rakshak.app.presentation.screen.HomeScreen
 import com.rakshak.app.presentation.screen.LoginScreen
 import com.rakshak.app.presentation.screen.MatchesScreen
-import com.rakshak.app.presentation.screen.MeshDebugScreen
+import com.rakshak.app.presentation.screen.MeshNetworkScreen
 import com.rakshak.app.presentation.screen.ProfileScreen
 import com.rakshak.app.presentation.screen.ScanScreen
 import com.rakshak.app.presentation.viewmodel.HomeViewModel
@@ -195,15 +195,28 @@ fun AppNavigation(
             }
 
             composable(Routes.PROFILE) {
+                val noSimWarning by loginViewModel.noSimWarning.collectAsStateWithLifecycle()
+                val sim by loginViewModel.sim.collectAsStateWithLifecycle()
+                // Opening the profile is the moment a volunteer checks the number
+                // an officer would call, so re-detect the SIM here as well as on
+                // app open — a card swapped mid-shift shows up without a restart.
+                LaunchedEffect(Unit) { loginViewModel.syncSim() }
                 ProfileScreen(
                     volunteer = volunteer,
+                    sim = sim,
+                    noSimWarning = noSimWarning,
+                    onSelectSim = loginViewModel::selectSim,
+                    onSavePhone = loginViewModel::savePhoneManually,
+                    onUseSimNumber = loginViewModel::useSimNumber,
+                    onSyncNow = loginViewModel::forceSyncSim,
+                    onMessageShown = loginViewModel::dismissSimMessage,
                     onSignOut = loginViewModel::signOut,
                     onOpenMesh = { navController.navigate(Routes.MESH) },
                 )
             }
 
             composable(Routes.MESH) {
-                MeshDebugScreen(
+                MeshNetworkScreen(
                     mesh = ServiceLocator.mesh(context),
                     onBack = { navController.popBackStack() },
                 )

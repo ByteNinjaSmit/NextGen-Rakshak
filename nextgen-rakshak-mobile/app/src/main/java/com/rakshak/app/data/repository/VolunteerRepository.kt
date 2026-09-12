@@ -16,6 +16,12 @@ interface VolunteerRepository {
      * alerts to nearby volunteers (FR-03). No-op if location/uid is unavailable.
      */
     suspend fun publishLocation()
+
+    /** Push a freshly re-read SIM number for the given volunteer. */
+    suspend fun updatePhone(uid: String, phone: String)
+
+    /** Push the Google-owned identity fields after a display name or avatar change. */
+    suspend fun updateIdentity(uid: String, name: String, email: String, photoUrl: String)
 }
 
 class DefaultVolunteerRepository(
@@ -37,6 +43,14 @@ class DefaultVolunteerRepository(
         val uid = auth.currentUid ?: return
         val location = withTimeoutOrNull(NETWORK_TIMEOUT_MS) { locationProvider.current() } ?: return
         source.updateLocation(uid, location.latitude, location.longitude)
+    }
+
+    override suspend fun updatePhone(uid: String, phone: String) {
+        source.updatePhone(uid, phone)
+    }
+
+    override suspend fun updateIdentity(uid: String, name: String, email: String, photoUrl: String) {
+        source.updateIdentity(uid, name, email, photoUrl)
     }
 
     private companion object {

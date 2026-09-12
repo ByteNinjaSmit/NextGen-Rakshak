@@ -1,75 +1,198 @@
 # NextGen Rakshak — Volunteer Android App
 
 Kotlin + Jetpack Compose app. Volunteers receive a missing-child alert, open the
-camera, and the phone scans the crowd on-device (ML Kit face detection +
-MobileFaceNet TFLite embeddings + cosine similarity). No biometric data leaves
-the device.
+camera, and the phone scans the crowd on-device (ML Kit face detection + 3-point
+alignment + MobileFaceNet TFLite/LiteRT embeddings + cosine similarity). **No
+biometric data leaves the device** — the only image ever uploaded is the crop of
+the face the volunteer explicitly confirmed as a sighting.
+
+`minSdk 24` · `compileSdk 35` · JDK 17 · manual DI via `ServiceLocator`.
+
+## Screens
+
+`AppNavigation` routes: `login → home → scan`, plus `matches`, `profile`, `mesh`.
+Home / Matches / Profile are the bottom-bar roots (double back press to exit); a
+tapped alert notification deep-links into Scan once sign-in settles on Home.
+
+| Screen | What it does |
+|---|---|
+| **Login** | One route: Continue with Google (Credential Manager + `googleid`). Email/password and anonymous guest are both gone. An account carrying the kiosk's `police` claim is refused — one account, one role. |
+| **Home** | Live active alerts (Firestore ∪ mesh), alert detail with photo, share, and publishes the volunteer's GPS so the server can geofence pushes. |
+| **Scan** | CameraX preview, live face boxes, torch, front/back switch (front preview mirrored), readiness header, side-by-side confirm dialog, queued-match counter, haptic buzz on a hit. |
+| **Matches** | The volunteer's own reports: status (pending / dispatched / accepted / dismissed), the confidence they acted on, coordinates or "no location", and an explicit *still queued on this device* state. Summary counts on top. |
+| **Profile** | Google identity card (avatar re-requested at the rendered size via `AvatarUrl`), SIM phone number with a dual-SIM picker and manual override, cloud-sync state, mesh entry point, sign-out. |
+| **Mesh debug** | Live peer count, packet log, gateway state, and a warning + settings shortcut when the OS Location toggle is off (Nearby discovery needs it even with the permission granted). |
 
 ## Architecture (clean, SOLID)
+
 ```
 com.rakshak.app/
 ├── data/
-│   ├── model/         Alert, MatchReport, Volunteer
-│   ├── datasource/    AlertDataSource + FirestoreAlertSource + MeshAlertSource; MatchDataSource + FirestoreMatchSource
-│   ├── local/         Room (AppDatabase, PendingMatchDao, PendingMatchEntity), VolunteerStore (DataStore)
-│   └── repository/    AlertRepository (combines Firestore∪Mesh) · MatchRepository (Firestore→Room fallback + sync)
+│   ├── auth/          AuthService + FirebaseAuthService, GoogleSignInClient, AuthFailure
+│   ├── model/         Alert, MatchReport + MatchStatus + MatchStatusReport, Volunteer
+│   ├── datasource/    AlertDataSource + FirestoreAlertSource + MeshAlertSource + MeshStore
+│   │                  MatchDataSource + FirestoreMatchSource, FirestoreVolunteerSource,
+│   │                  SightingPhotoUploader
+│   ├── local/         Room AppDatabase (v4): PendingMatchDao/Entity, MeshDao, MeshEntities
+│   │                  VolunteerStore (DataStore)
+│   └── repository/    AlertRepository (Firestore ∪ mesh) · MatchRepository (Firestore →
+│                      Room queue + mesh relay + sync) · VolunteerRepository
 ├── domain/
-│   ├── matching/      FaceMatcher, EmbeddingComparator + CosineEmbeddingComparator, FaceMatch
+│   ├── matching/      FaceMatcher, AlertIndex, TrackRegistry, EmbeddingAggregator,
+│   │                  EmbeddingComparator + CosineEmbeddingComparator, FaceMatch
 │   └── usecase/       ReportMatchUseCase
-├── ml/                FaceDetector + MlKitFaceDetector, EmbeddingExtractor + TFLiteEmbeddingExtractor, FacePreprocessor
-├── networking/        RakshakMessagingService (FCM), NotificationHelper, ConnectivityMonitor, MatchSyncWorker
-│   └── mesh/          MeshNetworkManager, MeshPayloadCodec, MeshCrypto (HMAC), MeshThumbnail,
-│                      MeshSeenCache, MeshRouter, MeshService (foreground)
+├── ml/                FaceDetector + MlKitFaceDetector, FaceGeometry, FacePreprocessor,
+│                      ImageQuality, EmbeddingExtractor + TFLiteEmbeddingExtractor
+├── networking/        RakshakMessagingService (FCM), NotificationHelper, FcmTokenProvider,
+│   │                  ConnectivityMonitor, MatchSyncWorker
+│   └── mesh/          MeshNetworkManager, MeshPayloadCodec, MeshCrypto (HMAC), MeshRouter,
+│                      MeshSeenCache, MeshThumbnail, MeshService (foreground)
 ├── di/                ServiceLocator (manual DI)
 ├── presentation/
-│   ├── screen/        LoginScreen, HomeScreen, ScanScreen
-│   ├── viewmodel/     LoginViewModel, HomeViewModel, ScanViewModel, ViewModelFactory
-│   ├── navigation/    AppNavigation (Login→Home→Scan)
-│   └── theme/         RakshakTheme, Color
-└── utils/             Constants, LocationProvider
+│   ├── screen/        LoginScreen, HomeScreen, ScanScreen, MatchesScreen, ProfileScreen,
+│   │                  MeshDebugScreen, PermissionRationaleDialog
+│   ├── viewmodel/     LoginViewModel, HomeViewModel, ScanViewModel, MatchesViewModel,
+│   │                  ViewModelFactory
+│   ├── navigation/    AppNavigation (Routes)
+│   └── theme/         Theme, Color, ExtendedColors, Type, Shape, Spacing, WindowInfo
+└── utils/             Constants, LocationProvider, LocationSettings, Haptics, BitmapExt,
+                       ElapsedTime, AvatarUrl, SimPhoneProvider
 ```
 
-## Offline behaviour (Phase 2)
-- **Mesh:** Nearby Connections `P2P_CLUSTER` + an application-level store-and-forward
-  layer (`MeshNetworkManager`). Nearby only links pairs of devices; multi-hop reach
-  is this layer re-broadcasting each received packet minus its sender.
-  - Every packet: a per-packet **UUID message id**, a **TTL** (6, decremented per hop,
-    dropped at 1), and an **HMAC-SHA256** trailer (`MeshCrypto`, key from
-    `BuildConfig.MESH_HMAC_KEY`) — a packet whose MAC fails to verify is dropped.
-  - Flood control: a **time-windowed seen-id cache** (`MeshSeenCache`, evicts after
-    the 8 h alert lifetime — genuinely short-lived), a resolved-id set, and an
-    expiry check.
-  - Alert packet also carries a **96×96 ≈2–3 KB JPEG thumbnail** (`MeshThumbnail`) so
-    an offline phone renders the parent's photo in the match dialog (FR-07).
-  - **Gateway-aware match routing:** peers exchange a HELLO with an "I have internet"
-    bit; match reports are sent to online peers first, flooded otherwise. The
-    online device uploads the match and sends an ACK back along the mesh; the
-    origin re-sends every 15 s (≤3 tries) until the ACK arrives or it comes online.
-  - `MatchReport.hasLocation` rides the wire — the kiosk shows "no location" rather
-    than a pin on 0,0 when the volunteer had no GPS fix.
-  - Mesh debug screen warns (with a settings shortcut) when the device's **Location**
-    toggle is off — Nearby discovery needs it even with the permission granted.
-  - **Foreground service** (`MeshService`, `connectedDevice` type) keeps the mesh
-    relaying when the app is backgrounded / screen locked; a low-priority
-    notification shows the live peer count and a Stop action.
-  - Learned alerts + seen ids are **persisted to Room** (`MeshStore`) so a restart
-    mid-event does not drop them.
-  - Live packet log + peer count: **Profile → Mesh Network** (`MeshDebugScreen`).
-- **Offline matches:** if Firestore write fails, the match is queued in Room and
-  relayed over the mesh; `MatchSyncWorker` (WorkManager) uploads the queue when
-  connectivity returns.
+## Face matching pipeline
+
+Per camera frame:
+
+1. **ML Kit detect** + landmarks + tracking id.
+2. **Frontality gate** — yaw ≤ 40°, roll ≤ 35°. A profile view does not match even
+   the right child, and can weakly match the wrong one.
+3. **3-point similarity alignment** — eyes + nose warped onto the ArcFace 112×112
+   template (`FaceGeometry`). Landmark-less fallback: square crop,
+   `FACE_CROP_MARGIN = 0.2`.
+4. **Quality gate** — face ≥ 48 px, mean luma 25–240, variance-of-Laplacian ≥ 12
+   (`ImageQuality`).
+5. **Embed** — `(px − 127.5)/127.5`, `[1,112,112,3]`, L2-normalised output.
+6. **Multi-frame fusion** — up to 3 embeddings averaged per tracking id, gated by
+   a 0.5 coherence floor so a recycled ML Kit id cannot blend two identities;
+   tracks idle for 3 s are evicted.
+7. **Cosine** against every prepared alert.
+
+| Decision | Value |
+|---|---|
+| Candidate | cosine > `SIMILARITY_THRESHOLD` = 0.55 |
+| Instant single-frame match | cosine ≥ `STRONG_MATCH_THRESHOLD` = 0.72 |
+| Mid-band confirmation | 2 consecutive frames of one track |
+| Analysis resolution | 1280×720, single-flight |
+
+**Alert photos are re-embedded on this device** (`ScanViewModel.prepare`, cached
+by alert id + photo URL); the server's `embedding` is only a fallback for a photo
+that cannot be fetched. Mixing the server's geometry with the phone's scores an
+identical face at 0.38–0.49 — below threshold — so one implementation on both
+sides of the comparison removes that failure class entirely.
+
+`TFLiteEmbeddingExtractor` runs every interpreter call on **one dedicated thread**
+(XNNPACK, 4 threads — LiteRT 2.x bundles no NNAPI/GPU delegate), and `onFrame` is
+gated by an `AtomicBoolean` so two frames can never enter the interpreter at once.
+Embedding width is read from the model's output tensor at load time; nothing
+hard-codes 128 or 512. `AlertIndex` detects a width mismatch and the scan header
+says so, because that failure is otherwise completely silent.
+
+## Reporting a sighting
+
+`ReportMatchUseCase` (on `Dispatchers.IO`): GPS fix bounded at 6 s
+(`hasLocation = false` beats a 30 s hang) → sighting crop uploaded to
+`match_sightings/` as `image/jpeg` q85, bounded at 6 s, falling back to the alert
+photo → `MatchRepository.report`. If Firestore fails or times out, the report is
+written to the Room queue **and** relayed over the mesh; `MatchSyncWorker`
+(WorkManager) drains the queue when connectivity returns.
+
+## Offline behaviour (mesh)
+
+Nearby Connections `P2P_CLUSTER` + an application-level store-and-forward layer
+(`MeshNetworkManager`). Nearby only links pairs of devices; multi-hop reach is
+this layer re-broadcasting each received packet minus its sender.
+
+- Every packet: a per-packet **UUID message id**, a **TTL** (6, decremented per
+  hop, dropped at 1), and an **HMAC-SHA256** trailer (`MeshCrypto`, key from
+  `BuildConfig.MESH_HMAC_KEY`) — a packet whose MAC fails to verify is dropped.
+  A release build refuses to compile with the default dev key.
+- Packet types: `alert`, `match`, `resolve`, `hello`, `ack`. `resolve` floods like
+  an alert, because an offline phone has no other way to learn a case closed.
+- Flood control: a **time-windowed seen-id cache** (`MeshSeenCache`, evicted after
+  the 8 h alert lifetime), a resolved-id set, and an expiry check.
+- Alert packets carry a **96×96 ≈2–3 KB JPEG thumbnail** (`MeshThumbnail`) so an
+  offline phone renders the parent's photo in the match dialog (FR-07).
+- **Gateway-aware match routing:** peers exchange a HELLO with an "I have
+  internet" bit; match reports go to online peers first and are flooded otherwise.
+  The online device uploads the match (stamping `relayedBy`) and sends an ACK back
+  along the mesh; the origin re-sends every 15 s (≤3 tries) until the ACK arrives
+  or it comes online.
+- `MatchReport.hasLocation` and `identifyingMarks` / `volunteerName` ride the wire,
+  so the kiosk shows "no location" rather than a pin on 0,0.
+- **Foreground service** (`MeshService`, `connectedDevice` type) keeps relaying
+  while the app is backgrounded or the screen is locked; a low-priority
+  notification shows the live peer count and a Stop action.
+- Learned alerts + seen ids are **persisted to Room** (`MeshStore`) so a restart
+  mid-event does not drop them.
+- Live packet log + peer count: **Profile → Mesh Network** (`MeshDebugScreen`).
+
+## Theme / design system
+
+`presentation/theme/` holds a real system, not per-screen values: full Material 3
+light + dark schemes, `RakshakExtendedColors` (success/warning with
+container/on-container pairs, read via `RakshakExtras.current`), the complete M3
+type scale on the system font, five-step `RakshakShapes` + `PillShape`, a
+`Spacing` scale (4 dp base, `xxs…xxl`), an `Elevation` scale, and
+`rememberWindowInfo()` for orientation + COMPACT/MEDIUM/EXPANDED width classes.
+Screen migration onto it is in progress.
+
+## Permissions
+
+Camera, fine/coarse location, notifications, vibrate, `READ_PHONE_STATE` +
+`READ_PHONE_NUMBERS` (auto-fill the volunteer's own number instead of asking),
+foreground service (`connectedDevice`), and Nearby's transport permissions — the
+legacy Bluetooth/Wi-Fi set capped at `maxSdkVersion=30` plus
+`BLUETOOTH_ADVERTISE/CONNECT/SCAN` and `NEARBY_WIFI_DEVICES` for API 31+.
+
+`allowBackup="false"`: the Room queue holds unsent sightings (a child's name, a
+confidence score, a GPS fix) and DataStore holds the volunteer's identity.
+Auto-backup would copy both to Google Drive, contradicting the on-device
+guarantee the project is built on.
 
 ## Setup
+
 1. Open this folder in **Android Studio** (it generates the Gradle wrapper jar on
    first sync).
-2. `app/google-services.json` (Firebase, project `nextgen-rakshak`) is already in
-   place and the `com.google.gms.google-services` plugin is enabled. It is
+2. `app/google-services.json` (Firebase project `nextgen-rakshak`) must be in
+   place; the `com.google.gms.google-services` plugin is enabled. It is
    gitignored — never commit it.
-3. Add the model at `app/src/main/assets/mobilefacenet.tflite` (see assets README).
-4. Run on a device/emulator (min SDK 24).
+3. Enable **Authentication → Sign-in method → Google** in the Firebase console and
+   register your signing SHA-1 (`./gradlew signingReport`), then re-download
+   `google-services.json`. Google is the app's only sign-in route.
+4. Add the model at `app/src/main/assets/mobilefacenet.tflite` — see
+   [the assets README](app/src/main/assets/README.md) and
+   [`scripts/README.md`](../scripts/README.md).
+5. Run on a device or emulator (min SDK 24).
+
+```bash
+./gradlew :app:testDebugUnitTest   # compile + unit tests
+./gradlew :app:assembleDebug
+```
+
+**Release builds** require `MESH_HMAC_KEY` (and the `RELEASE_*` signing entries)
+in `local.properties`; the build fails rather than ship the well-known dev key,
+which would make mesh packet authentication worthless.
 
 > Secrets: `google-services.json` and `local.properties` are gitignored. No keys
 > are hardcoded in source.
 
 ## Tests
-`./gradlew test` — includes cosine-similarity unit tests.
+
+`./gradlew :app:testDebugUnitTest` — cosine similarity, `AlertIndex`,
+`EmbeddingAggregator`, `TrackRegistry`, `FaceGeometry`, `MeshCrypto`,
+`MeshPayloadCodec`, `MeshRouter`, `MeshSeenCache`, `MeshAlertSource`,
+`ElapsedTime`.
+
+---
+
+Full system documentation: [`../docs/SYSTEM-REFERENCE.md`](../docs/SYSTEM-REFERENCE.md).

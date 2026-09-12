@@ -15,8 +15,15 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // `token.get('role', '')` rather than `token.role`: a volunteer's token
+    // carries no `role` claim at all, and reading an absent claim directly is an
+    // evaluation error, not a null. Every rule that *requires* police hid that —
+    // an error and a false both deny — but the one rule that requires the
+    // opposite, the volunteer writing their own `volunteers/{uid}` doc, was
+    // denied for exactly the accounts it exists to allow: the profile, the SIM
+    // contact number and the FCM token all failed with PERMISSION_DENIED.
     function isPolice() {
-      return signedIn() && request.auth.token.role == 'police';
+      return signedIn() && request.auth.token.get('role', '') == 'police';
     }
 
     // Missing-child alerts. Filed and resolved by the kiosk; read by every

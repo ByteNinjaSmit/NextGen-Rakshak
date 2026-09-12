@@ -23,14 +23,17 @@ python scripts/verify_parity.py        --saved-model ./mobilefacenet_savedmodel
 | | value |
 |---|---|
 | Input | `[1,112,112,3]` RGB, normalized `(px - 127.5) / 127.5` |
-| Output | `[1,128]`, already L2-normalized by the graph |
-| Matching | cosine similarity, `Constants.SIMILARITY_THRESHOLD` = 0.55 |
+| Output | `[1,128]` (or `[1,512]` for an ArcFace model), already L2-normalized by the graph. `TFLiteEmbeddingExtractor` reads the width from the output tensor at load time — nothing hard-codes it |
+| Geometry | 3-point similarity alignment (eyes + nose) onto the ArcFace template (`FaceGeometry`); centred crop with `FACE_CROP_MARGIN` = 0.2 only when landmarks are missing |
+| Matching | cosine similarity, `Constants.SIMILARITY_THRESHOLD` = 0.55 (strong single-frame match at 0.72) |
 
 ## This file and `functions/model/savedmodel/` must come from the same weights
 
-They are compared to each other at runtime: the server embeds the parent's photo,
-the phone embeds the live face, and the two vectors are scored against one
-another. Two models means two incompatible vector spaces.
+They can still end up compared to each other at runtime. The app's primary path
+now re-embeds each alert photo **on this device** (`ScanViewModel.prepare`), so
+both sides of a normal comparison come from this one file — but the server's
+embedding is still used as a fallback when the photo cannot be fetched, and two
+different models mean two incompatible vector spaces.
 
 The width mismatch is the failure mode to watch for, because it is **silent**.
 A 512-d device model against 128-d server embeddings does not crash and does not

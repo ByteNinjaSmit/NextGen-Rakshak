@@ -1,7 +1,6 @@
 package com.rakshak.app.presentation.screen
 
 import android.content.Intent
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -9,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,10 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
@@ -32,33 +33,30 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.rakshak.app.data.model.Alert
-import com.rakshak.app.presentation.theme.AlertRed
-import com.rakshak.app.presentation.theme.PrimaryBlue
-import com.rakshak.app.presentation.theme.SafeGreen
+import com.rakshak.app.presentation.theme.RakshakExtras
+import com.rakshak.app.presentation.theme.Spacing
+import com.rakshak.app.presentation.theme.WindowWidthClass
+import com.rakshak.app.presentation.theme.rememberWindowInfo
 import com.rakshak.app.presentation.viewmodel.HomeViewModel
-import com.rakshak.app.utils.ElapsedTime
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -68,150 +66,264 @@ import java.util.Locale
 fun HomeScreen(viewModel: HomeViewModel, onStartScan: () -> Unit) {
     val alerts by viewModel.activeAlerts.collectAsStateWithLifecycle()
     var selectedAlert by remember { mutableStateOf<Alert?>(null) }
+    val windowInfo = rememberWindowInfo()
+    // A wide landscape window (phone rotated, or a tablet) earns a true
+    // master-detail layout: the list never disappears behind the detail, so
+    // picking a different alert is one tap instead of a trip back.
+    val useTwoPane = windowInfo.isLandscape && windowInfo.widthClass != WindowWidthClass.COMPACT
+
+    if (useTwoPane) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                AlertListScreen(
+                    alerts = alerts,
+                    selectedId = selectedAlert?.id,
+                    onSelect = { selectedAlert = it },
+                )
+            }
+            androidx.compose.material3.VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Box(modifier = Modifier.weight(1.3f).fillMaxHeight()) {
+                if (selectedAlert != null) {
+                    AlertDetailsScreen(
+                        alert = selectedAlert!!,
+                        onBack = { selectedAlert = null },
+                        onStartScan = onStartScan,
+                        showBack = false,
+                    )
+                } else {
+                    EmptyDetailPane()
+                }
+            }
+        }
+        return
+    }
 
     if (selectedAlert != null) {
         AlertDetailsScreen(
             alert = selectedAlert!!,
             onBack = { selectedAlert = null },
-            onStartScan = onStartScan
+            onStartScan = onStartScan,
+            showBack = true,
         )
     } else {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Dashboard", fontWeight = FontWeight.SemiBold) },
-                )
-            },
-        ) { padding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(horizontal = 16.dp),
-            ) {
-                // Status Banner
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp)
-                        .background(SafeGreen.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = SafeGreen)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("You are Active", fontWeight = FontWeight.Bold, color = SafeGreen)
-                        Text("Ready to help", fontSize = 12.sp, color = Color.Gray)
-                    }
-                }
-
-                Text(
-                    "Active Alerts",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-
-                if (alerts.isEmpty()) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No active alerts right now.", color = Color.Gray)
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(alerts) { alert ->
-                            AlertRow(alert, onClick = { selectedAlert = alert })
-                        }
-                        item { Spacer(modifier = Modifier.height(16.dp)) }
-                    }
-                }
-            }
-        }
+        AlertListScreen(alerts = alerts, selectedId = null, onSelect = { selectedAlert = it })
     }
 }
 
 @Composable
-private fun AlertRow(alert: Alert, onClick: () -> Unit) {
-    val elapsed by produceState(ElapsedTime.since(alert.timestamp), alert.timestamp) {
-        while (true) {
-            value = ElapsedTime.since(alert.timestamp)
-            delay(30_000)
-        }
-    }
-    
-    val timeFormat = SimpleDateFormat("hh:mm a", Locale.getDefault())
-    val formattedTime = if (alert.timestamp > 0) timeFormat.format(Date(alert.timestamp)) else ""
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (alert.imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = alert.imageUrl,
-                    contentDescription = "Child Photo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.LightGray)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(64.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.LightGray),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray)
-                }
-            }
-            
-            Spacer(modifier = Modifier.width(12.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text("${alert.childName}, ${alert.age} yrs", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(alert.clothingDesc, fontSize = 12.sp, color = Color.DarkGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (alert.lastSeen.isNotBlank()) {
-                    Text(alert.lastSeen, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                Text(formattedTime, fontSize = 12.sp, color = Color.Gray)
-            }
-            
-            // NEW badge
-            Box(
-                modifier = Modifier
-                    .background(AlertRed.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text("NEW", color = AlertRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
+private fun EmptyDetailPane() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Filled.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.size(56.dp),
+            )
+            Spacer(modifier = Modifier.height(Spacing.sm))
+            Text(
+                "Select an alert to see details",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AlertDetailsScreen(alert: Alert, onBack: () -> Unit, onStartScan: () -> Unit) {
+private fun AlertListScreen(
+    alerts: List<Alert>,
+    selectedId: String?,
+    onSelect: (Alert) -> Unit,
+) {
+    val success = RakshakExtras.current.success
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Alert Details", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Dashboard", style = MaterialTheme.typography.titleLarge) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+            )
+        },
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = Spacing.lg),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = Spacing.md)
+                    .background(success.copy(alpha = 0.12f), MaterialTheme.shapes.medium)
+                    .padding(Spacing.lg),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = success)
+                Spacer(modifier = Modifier.width(Spacing.md))
+                Column {
+                    Text("You are Active", style = MaterialTheme.typography.titleMedium, color = success)
+                    Text(
+                        "Ready to help",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Text(
+                "Active Alerts",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(vertical = Spacing.sm)
+            )
+
+            if (alerts.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "No active alerts right now.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
+                    items(alerts, key = { it.id }) { alert ->
+                        AlertRow(alert, selected = alert.id == selectedId, onClick = { onSelect(alert) })
+                    }
+                    item { Spacer(modifier = Modifier.height(Spacing.lg)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertRow(alert: Alert, selected: Boolean, onClick: () -> Unit) {
+    val timeFormat = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
+    val formattedTime = if (alert.timestamp > 0) timeFormat.format(Date(alert.timestamp)) else ""
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            // primaryContainer is deliberately a vivid, full-strength brand red
+            // in dark mode (it doubles as an alert accent elsewhere) — using it
+            // solid here for "this row is selected" reads as an error state, not
+            // a selection. A soft tint says the same thing without the alarm.
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            },
+        ),
+        border = if (selected) {
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+        } else {
+            null
+        },
+        elevation = CardDefaults.cardElevation(defaultElevation = if (selected) Spacing.xxs else 0.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AlertThumbnail(alert.imageUrl, size = 64.dp)
+            Spacer(modifier = Modifier.width(Spacing.md))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text("${alert.childName}, ${alert.age} yrs", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    alert.clothingDesc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (alert.lastSeen.isNotBlank()) {
+                    Text(
+                        alert.lastSeen,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    formattedTime,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Surface(
+                shape = MaterialTheme.shapes.extraSmall,
+                color = MaterialTheme.colorScheme.errorContainer,
+            ) {
+                Text(
+                    "NEW",
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AlertThumbnail(imageUrl: String, size: androidx.compose.ui.unit.Dp) {
+    if (imageUrl.isNotBlank()) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Child Photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(size)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AlertDetailsScreen(
+    alert: Alert,
+    onBack: () -> Unit,
+    onStartScan: () -> Unit,
+    showBack: Boolean = true,
+) {
+    val windowInfo = rememberWindowInfo()
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Alert Details", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    if (showBack) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
@@ -228,70 +340,118 @@ fun AlertDetailsScreen(alert: Alert, onBack: () -> Unit, onStartScan: () -> Unit
                     }) {
                         Icon(Icons.Filled.Share, contentDescription = "Share")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Large Photo
-            if (alert.imageUrl.isNotBlank()) {
-                AsyncImage(
-                    model = alert.imageUrl,
-                    contentDescription = "Child Photo",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.LightGray)
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(120.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.LightGray),
-                    contentAlignment = Alignment.Center
+        // Start Scanning must never scroll out of reach — a landscape phone
+        // (roughly a third less height) previously overflowed straight past it
+        // with no way to scroll down to it at all. The fix in both
+        // orientations is the same shape: everything above the button lives in
+        // a scrollable region with weight(1f); the button is a fixed sibling
+        // after it, never inside the scroll.
+        if (windowInfo.isLandscape) {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(Spacing.lg),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                    AlertPhoto(alert.imageUrl, size = 160.dp)
+                    Spacer(modifier = Modifier.height(Spacing.md))
+                    Text("${alert.childName}, ${alert.age} Years", style = MaterialTheme.typography.headlineSmall)
+                }
+                Spacer(modifier = Modifier.width(Spacing.xl))
+                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    Column(
+                        modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    ) {
+                        AlertDetailRows(alert)
+                    }
+                    Spacer(modifier = Modifier.height(Spacing.md))
+                    StartScanningButton(onStartScan)
                 }
             }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            Text("${alert.childName}, ${alert.age} Years", fontWeight = FontWeight.Bold, fontSize = 22.sp)
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            val dateFormat = SimpleDateFormat("hh:mm a, dd MMM yyyy", Locale.getDefault())
-            val formattedTime = if (alert.timestamp > 0) dateFormat.format(Date(alert.timestamp)) else "Unknown"
-
-            // Details list
-            Column(modifier = Modifier.fillMaxWidth()) {
-                DetailRow("Clothing", alert.clothingDesc)
-                DetailRow("Last Seen", alert.lastSeen)
-                DetailRow("Time", formattedTime)
-                DetailRow("Gender", alert.gender.replaceFirstChar { it.uppercase() })
-                DetailRow("Additional Info", alert.parentContact.ifEmpty { "No additional info." })
+        } else {
+            Column(modifier = Modifier.fillMaxSize().padding(padding).padding(Spacing.lg)) {
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    AlertPhoto(alert.imageUrl, size = 120.dp)
+                    Spacer(modifier = Modifier.height(Spacing.lg))
+                    Text("${alert.childName}, ${alert.age} Years", style = MaterialTheme.typography.headlineSmall)
+                    Spacer(modifier = Modifier.height(Spacing.xxl))
+                    AlertDetailRows(alert)
+                }
+                Spacer(modifier = Modifier.height(Spacing.md))
+                StartScanningButton(onStartScan)
             }
-            
-            Spacer(modifier = Modifier.weight(1f))
-            
-            Button(
-                onClick = onStartScan,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(25.dp)
-            ) {
-                Text("Start Scanning", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun AlertPhoto(imageUrl: String, size: androidx.compose.ui.unit.Dp) {
+    if (imageUrl.isNotBlank()) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Child Photo",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(size)
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(MaterialTheme.shapes.large)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Filled.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(size / 2),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AlertDetailRows(alert: Alert) {
+    val dateFormat = remember { SimpleDateFormat("hh:mm a, dd MMM yyyy", Locale.getDefault()) }
+    val formattedTime = if (alert.timestamp > 0) dateFormat.format(Date(alert.timestamp)) else "Unknown"
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        DetailRow("Clothing", alert.clothingDesc)
+        DetailRow("Last Seen", alert.lastSeen)
+        DetailRow("Time", formattedTime)
+        DetailRow("Gender", alert.gender.replaceFirstChar { it.uppercase() })
+        DetailRow("Additional Info", alert.parentContact.ifEmpty { "No additional info." })
+    }
+}
+
+/**
+ * Always a fixed footer, never inside the scrollable detail region above it —
+ * a landscape phone has enough less height that the button used to be pushed
+ * clean off the bottom of the screen with no way to scroll down to it.
+ */
+@Composable
+private fun StartScanningButton(onStartScan: () -> Unit) {
+    Button(
+        onClick = onStartScan,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp),
+        shape = MaterialTheme.shapes.extraLarge,
+    ) {
+        Text("Start Scanning", style = MaterialTheme.typography.titleMedium)
     }
 }
 
@@ -300,20 +460,19 @@ private fun DetailRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .padding(vertical = Spacing.sm),
         verticalAlignment = Alignment.Top
     ) {
         Text(
             text = label,
             modifier = Modifier.width(120.dp),
-            color = Color.Gray,
-            fontSize = 14.sp
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
         )
         Text(
             text = value.ifBlank { "-" },
             modifier = Modifier.weight(1f),
-            fontWeight = FontWeight.Medium,
-            fontSize = 14.sp
+            style = MaterialTheme.typography.bodyMedium,
         )
     }
 }

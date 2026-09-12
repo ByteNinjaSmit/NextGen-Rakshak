@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,9 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.LocationOff
@@ -34,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,19 +45,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.rakshak.app.data.model.MatchStatus
 import com.rakshak.app.data.model.MatchStatusReport
-import com.rakshak.app.presentation.theme.AlertRed
-import com.rakshak.app.presentation.theme.PrimaryBlue
-import com.rakshak.app.presentation.theme.SafeGreen
+import com.rakshak.app.presentation.theme.RakshakExtras
+import com.rakshak.app.presentation.theme.Spacing
+import com.rakshak.app.presentation.theme.WindowWidthClass
+import com.rakshak.app.presentation.theme.rememberWindowInfo
 import com.rakshak.app.presentation.viewmodel.MatchesSummary
 import com.rakshak.app.presentation.viewmodel.MatchesViewModel
 import com.rakshak.app.utils.Constants
@@ -79,16 +81,23 @@ fun MatchesScreen(viewModel: MatchesViewModel) {
     val myMatches by viewModel.myMatches.collectAsStateWithLifecycle()
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val syncing by viewModel.syncing.collectAsStateWithLifecycle()
+    val windowInfo = rememberWindowInfo()
+    // Two columns once there is width to spare (a phone in landscape, or a
+    // tablet): a single column of fixed-width cards would otherwise waste the
+    // whole second half of the screen.
+    val columns = if (windowInfo.isLandscape && windowInfo.widthClass != WindowWidthClass.COMPACT) 2 else 1
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("My Matches", fontWeight = FontWeight.SemiBold) },
+                title = { Text("My Matches", style = MaterialTheme.typography.titleLarge) },
                 actions = {
                     IconButton(onClick = viewModel::refresh) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Retry queued reports")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         }
     ) { padding ->
@@ -102,19 +111,25 @@ fun MatchesScreen(viewModel: MatchesViewModel) {
                 return@Column
             }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 16.dp),
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(columns),
+                modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                contentPadding = PaddingValues(vertical = Spacing.lg),
             ) {
-                item { SummaryStrip(summary) }
+                item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                    SummaryStrip(summary)
+                }
 
                 // Anything unsynced is called out above the list, not buried in
                 // it. A volunteer who believes police were notified will stop
                 // looking; if the report never left the phone, that belief is the
                 // most dangerous thing on this screen.
                 if (summary.queuedOffline > 0) {
-                    item { OfflineBanner(summary.queuedOffline, onRetry = viewModel::refresh) }
+                    item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                        OfflineBanner(summary.queuedOffline, onRetry = viewModel::refresh)
+                    }
                 }
 
                 items(myMatches, key = { it.id }) { match -> MatchCard(match) }
@@ -128,22 +143,22 @@ private fun EmptyState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp),
+            modifier = Modifier.padding(Spacing.xxl),
         ) {
             Icon(
                 Icons.Filled.Person,
                 contentDescription = null,
-                tint = Color.LightGray,
+                tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(56.dp),
             )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("No matches yet", fontWeight = FontWeight.SemiBold, color = Color.Gray)
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(Spacing.md))
+            Text("No matches yet", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(Spacing.xs))
             Text(
                 "Open the scanner and point your camera at the crowd. " +
                     "Every sighting you confirm is listed here with what police did about it.",
-                color = Color.Gray,
-                fontSize = 13.sp,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
         }
@@ -153,14 +168,15 @@ private fun EmptyState() {
 /** Counts across every report, so the state of the volunteer's work is one glance. */
 @Composable
 private fun SummaryStrip(summary: MatchesSummary) {
+    val extras = RakshakExtras.current
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        SummaryTile("Reported", summary.total, PrimaryBlue, Modifier.weight(1f))
-        SummaryTile("Awaiting", summary.awaitingReview, Color(0xFFFFA000), Modifier.weight(1f))
-        SummaryTile("Dispatched", summary.dispatched, PrimaryBlue, Modifier.weight(1f))
-        SummaryTile("Accepted", summary.accepted, SafeGreen, Modifier.weight(1f))
+        SummaryTile("Reported", summary.total, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+        SummaryTile("Awaiting", summary.awaitingReview, extras.warning, Modifier.weight(1f))
+        SummaryTile("Dispatched", summary.dispatched, MaterialTheme.colorScheme.tertiary, Modifier.weight(1f))
+        SummaryTile("Accepted", summary.accepted, extras.success, Modifier.weight(1f))
     }
 }
 
@@ -168,47 +184,57 @@ private fun SummaryStrip(summary: MatchesSummary) {
 private fun SummaryTile(label: String, value: Int, color: Color, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.10f)),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f)),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.sm),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("$value", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = color)
-            Text(label, fontSize = 11.sp, color = Color.Gray, maxLines = 1)
+            Text(
+                "$value",
+                style = MaterialTheme.typography.titleLarge,
+                color = color,
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
         }
     }
 }
 
 @Composable
 private fun OfflineBanner(count: Int, onRetry: () -> Unit) {
+    val warning = RakshakExtras.current.warning
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFA000).copy(alpha = 0.12f)),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = RakshakExtras.current.warningContainer),
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Filled.CloudOff, contentDescription = null, tint = Color(0xFFFFA000))
-            Spacer(modifier = Modifier.width(10.dp))
+            Icon(Icons.Filled.CloudOff, contentDescription = null, tint = warning)
+            Spacer(modifier = Modifier.width(Spacing.sm))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     "$count report(s) not yet delivered",
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = RakshakExtras.current.onWarningContainer,
                 )
                 Text(
                     "They are saved on this phone and will send when you have signal. " +
                         "Police have not seen them yet.",
-                    fontSize = 12.sp,
-                    color = Color.Gray,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = RakshakExtras.current.onWarningContainer,
                 )
             }
             IconButton(onClick = onRetry) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Retry now", tint = Color(0xFFFFA000))
+                Icon(Icons.Filled.Refresh, contentDescription = "Retry now", tint = warning)
             }
         }
     }
@@ -225,56 +251,63 @@ private fun MatchCard(match: MatchStatusReport) {
     val timeFormat = remember { SimpleDateFormat("hh:mm a, dd MMM", Locale.getDefault()) }
     val formattedTime =
         if (match.timestampMillis > 0) timeFormat.format(Date(match.timestampMillis)) else "—"
+    val success = RakshakExtras.current.success
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        elevation = CardDefaults.cardElevation(defaultElevation = Spacing.xxs),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier.padding(Spacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (match.imageUrl.isNotBlank()) {
                     AsyncImage(
                         model = match.imageUrl,
                         contentDescription = "Face captured for this sighting",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                            .background(Color.LightGray),
+                        modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                     )
                 } else {
                     Box(
-                        modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                            .background(Color.LightGray),
+                        modifier = Modifier.size(56.dp).clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray)
+                        Icon(Icons.Filled.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(Spacing.md))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         match.childName.ifBlank { "Unnamed child" },
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(formattedTime, fontSize = 12.sp, color = Color.Gray)
+                        Text(
+                            formattedTime,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         if (match.confidence > 0f) {
-                            Text(" · ", fontSize = 12.sp, color = Color.Gray)
+                            Text(
+                                " · ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                             Text(
                                 "${(match.confidence * 100).toInt()}% match",
-                                fontSize = 12.sp,
+                                style = MaterialTheme.typography.labelMedium,
                                 color = if (match.confidence >= Constants.STRONG_MATCH_THRESHOLD) {
-                                    SafeGreen
+                                    success
                                 } else {
-                                    PrimaryBlue
+                                    MaterialTheme.colorScheme.tertiary
                                 },
-                                fontWeight = FontWeight.Medium,
                             )
                         }
                     }
@@ -283,11 +316,11 @@ private fun MatchCard(match: MatchStatusReport) {
                 Column(horizontalAlignment = Alignment.End) {
                     StatusBadge(match.status)
                     if (match.pendingSync) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(Spacing.xxs))
                         Icon(
                             Icons.Filled.CloudOff,
                             contentDescription = "Not yet delivered",
-                            tint = Color(0xFFFFA000),
+                            tint = RakshakExtras.current.warning,
                             modifier = Modifier.size(14.dp),
                         )
                     }
@@ -295,7 +328,7 @@ private fun MatchCard(match: MatchStatusReport) {
             }
 
             AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 12.dp)) {
+                Column(modifier = Modifier.padding(top = Spacing.md)) {
                     EvidenceRow(
                         icon = if (match.hasLocation) Icons.Filled.LocationOn else Icons.Filled.LocationOff,
                         label = "Where you saw them",
@@ -331,19 +364,28 @@ private fun MatchCard(match: MatchStatusReport) {
 
 @Composable
 private fun EvidenceRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     value: String,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = Spacing.xs),
         verticalAlignment = Alignment.Top,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(10.dp))
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(modifier = Modifier.width(Spacing.sm))
         Column {
-            Text(label, fontSize = 11.sp, color = Color.Gray)
-            Text(value, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(value, style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -366,17 +408,18 @@ private fun formatCoordinates(lat: Double, lng: Double): String {
 
 @Composable
 private fun StatusBadge(status: MatchStatus) {
+    val extras = RakshakExtras.current
     val (label, color) = when (status) {
-        MatchStatus.PENDING -> "Pending" to Color(0xFFFFA000)
-        MatchStatus.DISPATCHED -> "Dispatched" to PrimaryBlue
-        MatchStatus.ACCEPTED -> "Accepted" to SafeGreen
-        MatchStatus.DISMISSED -> "Dismissed" to AlertRed
+        MatchStatus.PENDING -> "Pending" to extras.warning
+        MatchStatus.DISPATCHED -> "Dispatched" to MaterialTheme.colorScheme.tertiary
+        MatchStatus.ACCEPTED -> "Accepted" to extras.success
+        MatchStatus.DISMISSED -> "Dismissed" to MaterialTheme.colorScheme.error
     }
     Box(
         modifier = Modifier
-            .background(color.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .background(color.copy(alpha = 0.12f), MaterialTheme.shapes.extraSmall)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs)
     ) {
-        Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = color, style = MaterialTheme.typography.labelSmall)
     }
 }

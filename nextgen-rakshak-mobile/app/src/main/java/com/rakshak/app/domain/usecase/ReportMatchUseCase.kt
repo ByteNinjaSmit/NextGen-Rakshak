@@ -39,9 +39,14 @@ class ReportMatchUseCase(
         // The sighting photo must be the face actually seen, not the alert's own
         // photo, or the kiosk's side-by-side review compares a picture to itself.
         // If the upload fails (offline, quota), fall back to the alert photo so the
-        // report — the more important half — still goes out.
-        val sightingImageUrl = runCatching { photoUploader.upload(alert.id, faceCrop) }
-            .getOrDefault(alert.imageUrl)
+        // report — the more important half — still goes out. Bounded: with no
+        // network at all, Storage's putBytes() retries internally (App Check
+        // token fetch backoff) rather than failing fast, so an unbounded await
+        // here hangs Confirm forever and the report — and its mesh fallback —
+        // never happens. A slow/absent upload should not block the report.
+        val sightingImageUrl = runCatching {
+            withTimeoutOrNull(UPLOAD_TIMEOUT_MS) { photoUploader.upload(alert.id, faceCrop) }
+        }.getOrNull() ?: alert.imageUrl
         matchRepository.report(
             MatchReport(
                 alertId = alert.id,
@@ -60,5 +65,6 @@ class ReportMatchUseCase(
 
     private companion object {
         const val LOCATION_TIMEOUT_MS = 6_000L
+        const val UPLOAD_TIMEOUT_MS = 6_000L
     }
 }

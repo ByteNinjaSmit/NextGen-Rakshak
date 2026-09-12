@@ -19,12 +19,21 @@ data class SignedInUser(
     val uid: String,
     val displayName: String? = null,
     val email: String? = null,
+    val photoUrl: String? = null,
 )
 
 /** Authentication for the volunteer app. (SOLID: consumers depend on the interface.) */
 interface AuthService {
     /** Signed-in user id, or null if not authenticated. */
     val currentUid: String?
+
+    /**
+     * The signed-in account's current profile straight from Firebase, or null
+     * when signed out. Read on every app open: a volunteer who changes their
+     * Google display name or avatar should see that on the next launch rather
+     * than whatever was captured the day they first signed in.
+     */
+    val currentProfile: SignedInUser?
 
     /**
      * The signed-in uid over time, emitting null while signed out.
@@ -71,6 +80,9 @@ class FirebaseAuthService(
     override val currentUid: String?
         get() = auth.currentUser?.uid
 
+    override val currentProfile: SignedInUser?
+        get() = auth.currentUser?.toSignedInUser()
+
     override fun uidFlow(): Flow<String?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
         auth.addAuthStateListener(listener) // fires immediately with the current state
@@ -82,7 +94,7 @@ class FirebaseAuthService(
         val user = requireNotNull(auth.signInWithCredential(credential).await().user) {
             "Google sign-in returned no user"
         }
-        return SignedInUser(uid = user.uid, displayName = user.displayName, email = user.email)
+        return user.toSignedInUser()
     }
 
     override suspend fun signInWithEmail(email: String, password: String): SignedInUser =
@@ -129,8 +141,18 @@ class FirebaseAuthService(
         } catch (e: FirebaseAuthException) {
             throw AuthFailure(e.message ?: fallback, e)
         }
-        return requireNotNull(user) { fallback }
-            .let { SignedInUser(uid = it.uid, displayName = it.displayName, email = it.email) }
+        return requireNotNull(user) { fallback }.toSignedInUser()
+    }
+
+    private companion object {
+        fun FirebaseUser.toSignedInUser() = SignedInUser(
+            uid = uid,
+            displayName = displayName,
+            email = email,
+            // FirebaseUser.photoUrl is the Google account avatar for a Google
+            // sign-in and null for email/password, which the UI falls back on.
+            photoUrl = photoUrl?.toString(),
+        )
     }
 }
 

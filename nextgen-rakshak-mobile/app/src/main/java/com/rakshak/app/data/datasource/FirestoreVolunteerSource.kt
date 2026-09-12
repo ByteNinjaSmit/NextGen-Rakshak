@@ -21,6 +21,7 @@ class FirestoreVolunteerSource(
                 "role" to volunteer.role,
                 "name" to volunteer.name,
                 "email" to volunteer.email,
+                "photoUrl" to volunteer.photoUrl,
                 "fcmToken" to fcmToken,
                 "registeredAt" to FieldValue.serverTimestamp(),
             ),
@@ -31,6 +32,35 @@ class FirestoreVolunteerSource(
     /** Refresh just the token (on FCM token rotation). */
     suspend fun updateToken(uid: String, fcmToken: String) {
         doc(uid).set(mapOf("fcmToken" to fcmToken), SetOptions.merge()).await()
+    }
+
+    /**
+     * Refresh just the phone number (re-read from the SIM on a later app open,
+     * or picked/typed by the volunteer on the profile screen).
+     *
+     * `phoneUpdatedAt` is written alongside so the kiosk can tell a number that
+     * was confirmed this morning from one captured at a sign-in weeks ago.
+     */
+    suspend fun updatePhone(uid: String, phone: String) {
+        doc(uid).set(
+            mapOf(
+                "phone" to phone,
+                "phoneUpdatedAt" to FieldValue.serverTimestamp(),
+            ),
+            SetOptions.merge(),
+        ).await()
+    }
+
+    /** Refresh the Google-owned identity fields (display name, email, avatar). */
+    suspend fun updateIdentity(uid: String, name: String, email: String, photoUrl: String) {
+        doc(uid).set(
+            mapOf(
+                "name" to name,
+                "email" to email,
+                "photoUrl" to photoUrl,
+            ),
+            SetOptions.merge(),
+        ).await()
     }
 
     /** Publish the volunteer's last known position so alerts can be geofenced (FR-03). */

@@ -19,16 +19,21 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FlashOn
@@ -37,6 +42,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,9 +81,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.rakshak.app.data.model.Alert
 import com.rakshak.app.domain.matching.FaceBox
-import com.rakshak.app.presentation.theme.AlertRed
-import com.rakshak.app.presentation.theme.PrimaryBlue
-import com.rakshak.app.presentation.theme.SafeGreen
+import com.rakshak.app.presentation.theme.RakshakExtendedColors
+import com.rakshak.app.presentation.theme.RakshakExtras
+import com.rakshak.app.presentation.theme.Spacing
+import com.rakshak.app.presentation.theme.rememberWindowInfo
 import com.rakshak.app.presentation.viewmodel.ScanViewModel
 import com.rakshak.app.utils.Constants
 import com.rakshak.app.utils.Haptics
@@ -94,6 +101,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val pending by viewModel.pending.collectAsStateWithLifecycle()
+    val queuedCount by viewModel.queuedCount.collectAsStateWithLifecycle()
+    val submitting by viewModel.submitting.collectAsStateWithLifecycle()
     val reported by viewModel.reported.collectAsStateWithLifecycle()
     val scanningFor by viewModel.scanningFor.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
@@ -220,6 +229,8 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             faceCrop = reviewMatch.faceCrop,
             confidence = reviewMatch.confidence,
             framesFused = reviewMatch.framesFused,
+            queuedCount = queuedCount,
+            submitting = submitting,
             error = error,
             onReject = viewModel::dismiss,
             onConfirm = {
@@ -230,16 +241,22 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
         )
     }
 
+    val windowInfo = rememberWindowInfo()
+    val extras = RakshakExtras.current
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scanning...", fontSize = 18.sp, fontWeight = FontWeight.SemiBold) },
+                title = { Text("Scanning...", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.endSession(); onReported() }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                )
             )
         }
     ) { paddingValues ->
@@ -281,27 +298,29 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
             }
 
             // Status banner: what the scanner is doing, who it is looking for,
-            // and how fast it is going.
+            // and how fast it is going. Deliberately a dark scrim with white text
+            // regardless of app theme — it sits on a live video feed, not a
+            // themed surface, the same way a camera app's own overlay would.
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .padding(12.dp),
+                    .fillMaxWidth(if (windowInfo.isLandscape) 0.7f else 1f)
+                    .padding(Spacing.md),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = MaterialTheme.shapes.large,
                     color = Color.Black.copy(alpha = 0.72f),
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val indicatorColor = when {
-                            readiness.modelMismatch -> AlertRed
-                            detectedFaces.any { it.isMatch } -> SafeGreen
-                            detectedFaces.isNotEmpty() -> PrimaryBlue
-                            readiness.preparing -> Color(0xFFFFA000)
+                            readiness.modelMismatch -> MaterialTheme.colorScheme.error
+                            detectedFaces.any { it.isMatch } -> extras.success
+                            detectedFaces.isNotEmpty() -> MaterialTheme.colorScheme.tertiary
+                            readiness.preparing -> extras.warning
                             else -> Color.LightGray
                         }
                         Box(
@@ -309,12 +328,11 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                                 .size(10.dp)
                                 .background(indicatorColor, CircleShape)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(Spacing.sm))
                         Text(
                             text = scanStatus,
-                            fontWeight = FontWeight.Medium,
+                            style = MaterialTheme.typography.bodyMedium,
                             color = Color.White,
-                            fontSize = 13.sp,
                             maxLines = 2,
                         )
                     }
@@ -323,18 +341,18 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 // Naming the children makes the scan concrete: the volunteer is
                 // looking for Aarav, not running "face recognition".
                 if (scanningFor.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(Spacing.xs))
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = MaterialTheme.shapes.medium,
                         color = Color.Black.copy(alpha = 0.55f),
                     ) {
                         Text(
                             text = "Looking for: " + scanningFor.joinToString(", "),
                             color = Color.White,
-                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                         )
                     }
                 }
@@ -343,103 +361,199 @@ fun ScanScreen(viewModel: ScanViewModel, onReported: () -> Unit) {
                 // like one that is running and finding nobody; this is what tells
                 // the two apart, on a real phone, in the field.
                 if (diagnostics.frameMillis > 0) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(Spacing.xs))
                     Text(
                         text = "${diagnostics.frameMillis} ms/frame · " +
                             "${diagnostics.embedded}/${diagnostics.detected} face(s) scanned · " +
                             "${readiness.alertsReady}/${readiness.alertsTotal} alert(s) ready",
                         color = Color.White.copy(alpha = 0.75f),
-                        fontSize = 11.sp,
+                        style = MaterialTheme.typography.labelSmall,
                     )
                 }
             }
 
-            // Bottom Controls — hidden while the match popup is showing.
+            // Controls — hidden while the match popup is showing. A phone
+            // rotated to landscape gets a side rail instead of a bottom bar: a
+            // bar pinned to the bottom of a landscape frame eats a much bigger
+            // share of the (shorter) preview height than the same bar does in
+            // portrait, exactly where the volunteer needs to see the crowd.
             if (pending == null) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(Color.White)
-                        .padding(vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Torch Toggle
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            IconButton(
-                                onClick = {
-                                    val cam = camera ?: return@IconButton
-                                    if (cam.cameraInfo.hasFlashUnit()) {
-                                        torchOn = !torchOn
-                                        cam.cameraControl.enableTorch(torchOn)
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Filled.FlashOn,
-                                    contentDescription = "Torch",
-                                    tint = if (torchOn) PrimaryBlue else Color.Black,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                if (windowInfo.isLandscape) {
+                    ScanControlsRail(
+                        torchOn = torchOn,
+                        lensFacing = lensFacing,
+                        onToggleTorch = {
+                            val cam = camera ?: return@ScanControlsRail
+                            if (cam.cameraInfo.hasFlashUnit()) {
+                                torchOn = !torchOn
+                                cam.cameraControl.enableTorch(torchOn)
                             }
-                            Text("Torch", color = Color.Black, fontSize = 12.sp)
-                        }
-
-                        // Stop Scan
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            IconButton(
-                                onClick = { viewModel.endSession(); onReported() },
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .background(PrimaryBlue, CircleShape)
-                            ) {
-                                Icon(Icons.Filled.Stop, contentDescription = "Stop scanning", tint = Color.White, modifier = Modifier.size(32.dp))
+                        },
+                        onStop = { viewModel.endSession(); onReported() },
+                        onSwitchCamera = {
+                            torchOn = false
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                                CameraSelector.LENS_FACING_FRONT
+                            } else {
+                                CameraSelector.LENS_FACING_BACK
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Stop Scan", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        // Camera Switch Button (Front / Rear)
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            IconButton(
-                                onClick = {
-                                    torchOn = false
-                                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                                        CameraSelector.LENS_FACING_FRONT
-                                    } else {
-                                        CameraSelector.LENS_FACING_BACK
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    Icons.Filled.Cameraswitch,
-                                    contentDescription = "Switch Camera",
-                                    tint = if (lensFacing == CameraSelector.LENS_FACING_FRONT) PrimaryBlue else Color.Black,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                        },
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                    )
+                } else {
+                    ScanControlsBar(
+                        torchOn = torchOn,
+                        lensFacing = lensFacing,
+                        onToggleTorch = {
+                            val cam = camera ?: return@ScanControlsBar
+                            if (cam.cameraInfo.hasFlashUnit()) {
+                                torchOn = !torchOn
+                                cam.cameraControl.enableTorch(torchOn)
                             }
-                            Text(
-                                if (lensFacing == CameraSelector.LENS_FACING_BACK) "Front Cam" else "Rear Cam",
-                                color = Color.Black,
-                                fontSize = 12.sp
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Scanning will work offline", fontSize = 12.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Filled.Wifi, contentDescription = null, tint = SafeGreen, modifier = Modifier.size(16.dp))
-                    }
+                        },
+                        onStop = { viewModel.endSession(); onReported() },
+                        onSwitchCamera = {
+                            torchOn = false
+                            lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                                CameraSelector.LENS_FACING_FRONT
+                            } else {
+                                CameraSelector.LENS_FACING_BACK
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScanControlsBar(
+    torchOn: Boolean,
+    lensFacing: Int,
+    onToggleTorch: () -> Unit,
+    onStop: () -> Unit,
+    onSwitchCamera: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(vertical = Spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.xl),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TorchControl(torchOn, onToggleTorch)
+            StopScanControl(onStop)
+            SwitchCameraControl(lensFacing, onSwitchCamera)
+        }
+        Spacer(modifier = Modifier.height(Spacing.lg))
+        OfflineNotice()
+    }
+}
+
+/** The landscape counterpart of [ScanControlsBar]: a vertical rail instead of a bottom bar. */
+@Composable
+private fun ScanControlsRail(
+    torchOn: Boolean,
+    lensFacing: Int,
+    onToggleTorch: () -> Unit,
+    onStop: () -> Unit,
+    onSwitchCamera: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = Spacing.lg, vertical = Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.xl, Alignment.CenterVertically),
+    ) {
+        TorchControl(torchOn, onToggleTorch)
+        StopScanControl(onStop)
+        SwitchCameraControl(lensFacing, onSwitchCamera)
+        Spacer(modifier = Modifier.height(Spacing.md))
+        OfflineNotice()
+    }
+}
+
+@Composable
+private fun TorchControl(torchOn: Boolean, onToggle: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onToggle) {
+            Icon(
+                Icons.Filled.FlashOn,
+                contentDescription = "Torch",
+                tint = if (torchOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text("Torch", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+private fun StopScanControl(onStop: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(
+            onClick = onStop,
+            modifier = Modifier
+                .size(64.dp)
+                .background(MaterialTheme.colorScheme.primary, CircleShape)
+        ) {
+            Icon(
+                Icons.Filled.Stop,
+                contentDescription = "Stop scanning",
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(32.dp),
+            )
+        }
+        Spacer(modifier = Modifier.height(Spacing.xs))
+        Text("Stop Scan", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
+private fun SwitchCameraControl(lensFacing: Int, onSwitch: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        IconButton(onClick = onSwitch) {
+            Icon(
+                Icons.Filled.Cameraswitch,
+                contentDescription = "Switch Camera",
+                tint = if (lensFacing == CameraSelector.LENS_FACING_FRONT) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.size(28.dp)
+            )
+        }
+        Text(
+            if (lensFacing == CameraSelector.LENS_FACING_BACK) "Front Cam" else "Rear Cam",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.labelSmall,
+        )
+    }
+}
+
+@Composable
+private fun OfflineNotice() {
+    val success = RakshakExtras.current.success
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "Scanning will work offline",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.width(Spacing.xs))
+        Icon(Icons.Filled.Wifi, contentDescription = null, tint = success, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -484,6 +598,12 @@ private fun FaceOverlay(
         }
     }
 
+    // Read outside the DrawScope lambda below: it is not @Composable, so
+    // MaterialTheme.colorScheme cannot be resolved inside it.
+    val matchColor = RakshakExtras.current.success
+    val turnedAwayColor = RakshakExtras.current.warning
+    val trackingColor = MaterialTheme.colorScheme.tertiary
+
     androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
         if (frameWidth <= 0 || frameHeight <= 0) return@Canvas
         val canvasW = size.width
@@ -504,9 +624,9 @@ private fun FaceOverlay(
             val boxBottom = face.bottom * frameHeight * scale + offsetY
 
             val boxColor = when {
-                face.isMatch -> SafeGreen
-                !face.isFrontal -> Color(0xFFFFA000) // amber: turned away, not embedded
-                else -> PrimaryBlue
+                face.isMatch -> matchColor
+                !face.isFrontal -> turnedAwayColor // turned away, not embedded
+                else -> trackingColor
             }
 
             drawRoundRect(
@@ -564,156 +684,285 @@ private fun MatchPopupDialog(
     faceCrop: android.graphics.Bitmap,
     confidence: Float,
     framesFused: Int,
+    queuedCount: Int,
+    submitting: Boolean,
     error: String?,
     onReject: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    val extras = RakshakExtras.current
+    val windowInfo = rememberWindowInfo()
+    // A phone rotated to landscape has roughly a third less height to work
+    // with. The photo pair alone (140dp tall, stacked above the score, the
+    // details, and two 52dp buttons) does not fit, and this dialog cannot be
+    // dismissed by tapping outside — a volunteer stuck mid-scan with an
+    // unreachable Confirm button is exactly the failure this app exists to
+    // avoid. Landscape gets a two-column split (evidence left, decision
+    // right) instead of one long stack, and — as a safety net regardless of
+    // orientation or font scale — the whole thing scrolls.
+    val isLandscape = windowInfo.isLandscape
+
     Dialog(
         onDismissRequest = onReject,
         properties = DialogProperties(dismissOnClickOutside = false, usePlatformDefaultWidth = false)
     ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(0.92f),
-            shape = RoundedCornerShape(20.dp),
-            color = Color.White,
-            shadowElevation = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = if (isLandscape) 720.dp else 480.dp)
+                .heightIn(max = (windowInfo.heightDp * 0.9f).dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = Spacing.xs,
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(Spacing.xl)
             ) {
-                Text("Possible Match Found", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Spacer(modifier = Modifier.height(16.dp))
+                MatchDialogHeader(queuedCount, extras)
+                Spacer(modifier = Modifier.height(Spacing.lg))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Missing Child Photo", fontSize = 12.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        AsyncImage(
-                            // Prefer the mesh thumbnail bytes: on an offline phone
-                            // imageUrl cannot be fetched, and the thumbnail is the
-                            // only way this side-by-side compare shows a face.
-                            model = alert.thumbnail ?: alert.imageUrl,
-                            contentDescription = "Missing child photo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
-                        )
+                if (isLandscape) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xl),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            MatchPhotoPair(alert, faceCrop, photoHeight = 110.dp)
+                            Spacer(modifier = Modifier.height(Spacing.lg))
+                            MatchScoreRow(confidence, framesFused, extras)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            MatchDetails(alert)
+                            if (error != null) {
+                                Spacer(modifier = Modifier.height(Spacing.md))
+                                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Spacer(modifier = Modifier.height(Spacing.lg))
+                            MatchDecisionPrompt()
+                            Spacer(modifier = Modifier.height(Spacing.md))
+                            MatchActionButtons(submitting, extras, onReject, onConfirm)
+                        }
                     }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Detected Face", fontSize = 12.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Image(
-                            bitmap = faceCrop.asImageBitmap(),
-                            contentDescription = "Detected face",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(140.dp).clip(RoundedCornerShape(12.dp)).background(Color.LightGray)
-                        )
+                } else {
+                    MatchPhotoPair(alert, faceCrop, photoHeight = 140.dp)
+                    Spacer(modifier = Modifier.height(Spacing.lg))
+                    MatchScoreRow(confidence, framesFused, extras)
+                    Spacer(modifier = Modifier.height(Spacing.lg))
+                    MatchDetails(alert)
+                    if (error != null) {
+                        Spacer(modifier = Modifier.height(Spacing.md))
+                        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
+                    Spacer(modifier = Modifier.height(Spacing.lg))
+                    MatchDecisionPrompt()
+                    Spacer(modifier = Modifier.height(Spacing.md))
+                    MatchActionButtons(submitting, extras, onReject, onConfirm)
                 }
+            }
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Similarity Score", color = Color.Black, fontWeight = FontWeight.Medium)
-                        // How the score was reached is part of how much to trust
-                        // it: one strong frame and three agreeing frames are
-                        // different kinds of evidence, and the volunteer is the one
-                        // being asked to make the call.
-                        Text(
-                            if (framesFused > 1) "averaged over $framesFused frames" else "single frame",
-                            color = Color.Gray,
-                            fontSize = 11.sp,
-                        )
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            "${(confidence * 100).toInt()}%",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
-                            color = if (confidence >= Constants.STRONG_MATCH_THRESHOLD) SafeGreen else PrimaryBlue,
-                        )
-                        Text(
-                            if (confidence >= Constants.STRONG_MATCH_THRESHOLD) "strong" else "possible",
-                            color = Color.Gray,
-                            fontSize = 11.sp,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    DetailRow("Child Name", alert.childName, valueColor = Color.Black)
-                    DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}", valueColor = Color.Black)
-                    DetailRow("Clothing", alert.clothingDesc, valueColor = Color.Black)
-                    DetailRow("Last Seen", alert.lastSeen, valueColor = Color.Black)
-                    if (alert.identifyingMarks.isNotBlank()) {
-                        DetailRow("Identifying Marks", alert.identifyingMarks, valueColor = Color.Black)
-                    }
-                }
-
-                if (error != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(error, color = AlertRed, fontSize = 13.sp)
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
+@Composable
+private fun MatchDialogHeader(queuedCount: Int, extras: RakshakExtendedColors) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Possible Match Found", style = MaterialTheme.typography.titleLarge)
+        // Other faces in the same frame also crossed the threshold and are
+        // waiting their turn — surfaced so the volunteer knows to stay put and
+        // work through all of them, not just this one.
+        if (queuedCount > 0) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = extras.warningContainer,
+            ) {
                 Text(
-                    "Does this look like the missing child?",
-                    color = Color.Black,
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    if (queuedCount == 1) "+1 more waiting" else "+$queuedCount more waiting",
+                    color = extras.onWarningContainer,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.xs),
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+    }
+}
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Button(
-                        onClick = onReject,
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        shape = RoundedCornerShape(25.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AlertRed, contentColor = Color.White)
-                    ) {
-                        Text(
-                            "Reject",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Button(
-                        onClick = onConfirm,
-                        modifier = Modifier.weight(1f).height(52.dp),
-                        shape = RoundedCornerShape(25.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = SafeGreen, contentColor = Color.White)
-                    ) {
-                        Text(
-                            "Confirm Match",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+@Composable
+private fun MatchPhotoPair(alert: Alert, faceCrop: android.graphics.Bitmap, photoHeight: androidx.compose.ui.unit.Dp) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.lg)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Missing Child Photo",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(Spacing.xs))
+            AsyncImage(
+                // Prefer the mesh thumbnail bytes: on an offline phone imageUrl
+                // cannot be fetched, and the thumbnail is the only way this
+                // side-by-side compare shows a face.
+                model = alert.thumbnail ?: alert.imageUrl,
+                contentDescription = "Missing child photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().height(photoHeight)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "Detected Face",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(Spacing.xs))
+            Image(
+                bitmap = faceCrop.asImageBitmap(),
+                contentDescription = "Detected face",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().height(photoHeight)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MatchScoreRow(confidence: Float, framesFused: Int, extras: RakshakExtendedColors) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column {
+            Text("Similarity Score", style = MaterialTheme.typography.titleSmall)
+            // How the score was reached is part of how much to trust it: one
+            // strong frame and three agreeing frames are different kinds of
+            // evidence, and the volunteer is the one being asked to make the call.
+            Text(
+                if (framesFused > 1) "averaged over $framesFused frames" else "single frame",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                "${(confidence * 100).toInt()}%",
+                style = MaterialTheme.typography.headlineSmall,
+                color = if (confidence >= Constants.STRONG_MATCH_THRESHOLD) extras.success else MaterialTheme.colorScheme.tertiary,
+            )
+            Text(
+                if (confidence >= Constants.STRONG_MATCH_THRESHOLD) "strong" else "possible",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun MatchDetails(alert: Alert) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        DetailRow("Child Name", alert.childName)
+        DetailRow("Age / Gender", "${alert.age} yrs · ${alert.gender}")
+        DetailRow("Clothing", alert.clothingDesc)
+        DetailRow("Last Seen", alert.lastSeen)
+        if (alert.identifyingMarks.isNotBlank()) {
+            DetailRow("Identifying Marks", alert.identifyingMarks)
+        }
+    }
+}
+
+@Composable
+private fun MatchDecisionPrompt() {
+    Text(
+        "Does this look like the missing child?",
+        style = MaterialTheme.typography.bodyMedium,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun MatchActionButtons(
+    submitting: Boolean,
+    extras: RakshakExtendedColors,
+    onReject: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Button(
+            onClick = onReject,
+            enabled = !submitting,
+            modifier = Modifier.weight(1f).height(52.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.xs),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError,
+                disabledContainerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.4f),
+                disabledContentColor = MaterialTheme.colorScheme.onError.copy(alpha = 0.7f),
+            )
+        ) {
+            Text(
+                "Reject",
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Button(
+            onClick = onConfirm,
+            // Disabled rather than just visually busy: a tap queued up while
+            // submitting used to fire a second reportMatch() once this one
+            // returned, relaying the same sighting twice.
+            enabled = !submitting,
+            modifier = Modifier.weight(1f).height(52.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.xs),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = extras.success,
+                contentColor = extras.onSuccess,
+                disabledContainerColor = extras.success.copy(alpha = 0.6f),
+                disabledContentColor = extras.onSuccess,
+            )
+        ) {
+            if (submitting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = extras.onSuccess,
+                    strokeWidth = 2.dp,
+                )
+                Spacer(modifier = Modifier.width(Spacing.sm))
+                Text(
+                    "Reporting...",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else {
+                Text(
+                    "Confirm Match",
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -722,15 +971,18 @@ private fun MatchPopupDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MatchConfirmationScreen(childName: String, location: String, onDone: () -> Unit) {
+    val success = RakshakExtras.current.success
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Confirm Match", fontWeight = FontWeight.SemiBold) },
+                title = { Text("Confirm Match", style = MaterialTheme.typography.titleLarge) },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
             )
         }
     ) { padding ->
@@ -738,29 +990,30 @@ fun MatchConfirmationScreen(childName: String, location: String, onDone: () -> U
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
             Icon(
                 Icons.Filled.CheckCircle,
                 contentDescription = "Success",
-                tint = SafeGreen,
+                tint = success,
                 modifier = Modifier.size(80.dp)
             )
-            Spacer(modifier = Modifier.height(24.dp))
-            Text("Thank You!", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(Spacing.xl))
+            Text("Thank You!", style = MaterialTheme.typography.headlineSmall)
+            Spacer(modifier = Modifier.height(Spacing.sm))
             Text(
                 "Your match has been submitted successfully.",
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            
+
             Spacer(modifier = Modifier.height(48.dp))
 
-            val dateFormat = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-            val currentTime = dateFormat.format(Date())
+            val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()) }
+            val currentTime = remember { dateFormat.format(Date()) }
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 DetailRow("Child Name", childName)
@@ -774,32 +1027,35 @@ fun MatchConfirmationScreen(childName: String, location: String, onDone: () -> U
             Button(
                 onClick = onDone,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(25.dp)
+                shape = MaterialTheme.shapes.extraLarge,
             ) {
-                Text("Done", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("Done", style = MaterialTheme.typography.titleMedium)
             }
         }
     }
 }
 
 @Composable
-private fun DetailRow(label: String, value: String, valueColor: Color = Color.Unspecified) {
+private fun DetailRow(label: String, value: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(vertical = Spacing.md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Filled.Person, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(label, color = Color.Gray, fontSize = 14.sp)
+            Icon(
+                Icons.Filled.Person,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(modifier = Modifier.width(Spacing.sm))
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
         }
         Text(
             value,
-            color = valueColor,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.titleSmall,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f),
         )

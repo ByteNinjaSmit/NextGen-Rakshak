@@ -86,6 +86,15 @@ class MainActivity : ComponentActivity() {
             } else {
                 add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
+            // Nearby Connections' Wi-Fi transport (used alongside Bluetooth by
+            // P2P_CLUSTER) refuses discovery outright on API 33+ without this —
+            // it was missing from this list entirely, so a device on Android 13+
+            // could accept incoming connections (another device found it) but
+            // could never discover anyone itself: MISSING_PERMISSION_NEARBY_WIFI_DEVICES
+            // on every startDiscovery() call, retried forever, never granted.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
         }
         val granted = meshPerms.all {
             ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
@@ -96,13 +105,18 @@ class MainActivity : ComponentActivity() {
     private fun requiredPermissions(): List<String> = buildList {
         add(Manifest.permission.CAMERA)
         add(Manifest.permission.ACCESS_FINE_LOCATION)
+        add(Manifest.permission.READ_PHONE_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             add(Manifest.permission.BLUETOOTH_ADVERTISE)
             add(Manifest.permission.BLUETOOTH_CONNECT)
             add(Manifest.permission.BLUETOOTH_SCAN)
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            add(Manifest.permission.READ_PHONE_NUMBERS)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             add(Manifest.permission.POST_NOTIFICATIONS)
+            add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
     }
 

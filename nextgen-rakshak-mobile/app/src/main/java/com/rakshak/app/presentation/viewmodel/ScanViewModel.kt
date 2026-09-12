@@ -101,8 +101,29 @@ class ScanViewModel(
     private val _pending = MutableStateFlow<PendingMatch?>(null)
     val pending: StateFlow<PendingMatch?> = _pending.asStateFlow()
 
+    /**
+     * Other faces that also crossed the threshold in the same frame as [_pending],
+     * waiting their turn. Without this, a frame with two matching faces showed a
+     * dialog for one and silently dropped the other — frame processing is paused
+     * entirely while a dialog is up (see [acceptsFrames]), so that second face's
+     * evidence never got another chance once whoever it belonged to moved on.
+     */
+    private val backlog = ArrayDeque<PendingMatch>()
+    private val _queuedCount = MutableStateFlow(0)
+    /** How many more matches are waiting behind the one on screen. */
+    val queuedCount: StateFlow<Int> = _queuedCount.asStateFlow()
+
     private val _reported = MutableStateFlow(false)
     val reported: StateFlow<Boolean> = _reported.asStateFlow()
+
+    /**
+     * True while a Confirm is in flight (GPS + photo upload + Firestore/mesh
+     * submit — up to several seconds offline). Without this a second tap before
+     * the dialog reacted launched a second [reportMatch], each with its own
+     * message id — the mesh relayed the same sighting twice.
+     */
+    private val _submitting = MutableStateFlow(false)
+    val submitting: StateFlow<Boolean> = _submitting.asStateFlow()
 
     /** Set when a confirmed sighting could not be recorded at all. */
     private val _error = MutableStateFlow<String?>(null)
@@ -316,18 +337,30 @@ class ScanViewModel(
                     result.statusMessage?.let { _scanStatus.value = it }
                 }
 
-                // A second match on the same frame is not lost: its track keeps its
-                // accumulated evidence, so it re-surfaces on the next frame once
-                // this one is dealt with.
-                val hit = result.matches.firstOrNull() ?: return@launch
-                val alert = index.alertById(hit.alertId) ?: return@launch
-                _pending.value = PendingMatch(
-                    alert = alert,
-                    confidence = hit.confidence,
-                    faceCrop = hit.faceCrop,
-                    trackingId = hit.trackingId,
-                    framesFused = hit.framesFused,
-                )
+                // A frame can carry more than one face that crosses the threshold at
+                // once (a group of children, say). The first becomes the visible
+                // dialog; the rest are queued rather than dropped, since frame
+                // processing is paused while a dialog is up and their track may not
+                // still be in view once it resumes.
+                val hits = result.matches.mapNotNull { hit ->
+                    val alert = index.alertById(hit.alertId) ?: return@mapNotNull null
+                    PendingMatch(
+                        alert = alert,
+                        confidence = hit.confidence,
+                        faceCrop = hit.faceCrop,
+                        trackingId = hit.trackingId,
+                        framesFused = hit.framesFused,
+                    )
+                }
+                if (hits.isEmpty()) return@launch
+                for (pm in hits) {
+                    if (_pending.value == null) {
+                        _pending.value = pm
+                    } else {
+                        backlog.addLast(pm)
+                    }
+                }
+                _queuedCount.value = backlog.size
             } finally {
                 busy.set(false)
             }
@@ -345,17 +378,23 @@ class ScanViewModel(
      */
     fun confirm() {
         val match = _pending.value ?: return
+        // A second tap while the first Confirm is still in flight must not start
+        // a second report: the UI should already have the button disabled, but
+        // guard here too rather than trust that alone.
+        if (!_submitting.compareAndSet(false, true)) return
         viewModelScope.launch {
             runCatching { reportMatch(match.alert, volunteer, match.confidence, match.faceCrop) }
                 .onSuccess {
                     _error.value = null
                     _reported.value = true
-                    _pending.value = null
+                    _submitting.value = false
+                    advance()
                     // Suppress just this child's track, not the whole session: other
                     // faces in frame keep the evidence they have accumulated.
                     matcher.markReported(match.trackingId)
                 }
                 .onFailure {
+                    _submitting.value = false
                     // Keep the match on screen so Confirm can simply be retried.
                     _error.value =
                         "Could not report this sighting. Stay with the child and try again."
@@ -370,15 +409,25 @@ class ScanViewModel(
      * all, does not re-open this dialog on the very next frame.
      */
     fun dismiss() {
+        if (_submitting.value) return // Confirm is in flight; Reject makes no sense mid-submit.
         val match = _pending.value
-        _pending.value = null
         _error.value = null
+        advance()
         matcher.rejectTrack(match?.trackingId)
+    }
+
+    /** Clear the dialog on screen and immediately promote the next queued match, if any. */
+    private fun advance() {
+        _pending.value = backlog.removeFirstOrNull()
+        _queuedCount.value = backlog.size
     }
 
     /** Leaving the scan screen: forget every track and verdict. */
     fun endSession() {
         _pending.value = null
+        backlog.clear()
+        _queuedCount.value = 0
+        _submitting.value = false
         _error.value = null
         _detectedFaces.value = emptyList()
         matcher.reset()

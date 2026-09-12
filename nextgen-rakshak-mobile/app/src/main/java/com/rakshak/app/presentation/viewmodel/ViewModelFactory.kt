@@ -19,6 +19,7 @@ class ViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T = when {
         modelClass.isAssignableFrom(LoginViewModel::class.java) ->
             LoginViewModel(
+                context,
                 ServiceLocator.volunteerStore(context),
                 ServiceLocator.auth(),
                 ServiceLocator.volunteerRepository(context),

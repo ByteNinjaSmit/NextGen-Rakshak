@@ -2,12 +2,17 @@ package com.rakshak.app.presentation.screen
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.rakshak.app.presentation.theme.Spacing
 
 /**
  * Explains each runtime permission *before* the system prompt appears.
@@ -23,7 +28,12 @@ fun PermissionRationaleDialog(onContinue: () -> Unit) {
         onDismissRequest = { /* Deliberately not dismissible — the app cannot work without these. */ },
         title = { Text("Permissions Rakshak needs") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                // A landscape phone has little vertical room to spare for four
+                // reasons plus the privacy note — scroll rather than clip.
+                modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md),
+            ) {
                 PermissionReason(
                     name = "Camera",
                     reason = "To scan the crowd for a missing child. The camera opens only " +
@@ -42,6 +52,11 @@ fun PermissionRationaleDialog(onContinue: () -> Unit) {
                 PermissionReason(
                     name = "Notifications",
                     reason = "To alert you the moment a child is reported missing.",
+                )
+                PermissionReason(
+                    name = "Phone number",
+                    reason = "To fill in your contact number from this SIM automatically, so " +
+                        "an officer can reach you about a sighting without you typing it in.",
                 )
                 Text(
                     "Face matching happens entirely on this phone. No photo or face data " +

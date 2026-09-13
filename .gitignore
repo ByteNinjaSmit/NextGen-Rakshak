@@ -62,4 +62,16 @@ yarn-debug.log*
 yarn-error.log*
 firebase-debug.log*
 .firebase/
-UI_Images/  
+UI_Images/
+
+# ---- LaTeX build artifacts (reports/) ----
+*.aux
+*.lof
+*.lot
+*.out
+*.toc
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk

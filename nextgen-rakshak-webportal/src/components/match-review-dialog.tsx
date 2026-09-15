@@ -24,13 +24,13 @@ function PhotoOrFallback({ src, alt }: { src: string; alt: string }) {
   if (!src)
     return (
       <div
-        className="flex h-40 w-full items-center justify-center rounded-md bg-muted"
+        className="flex h-24 sm:h-40 w-full items-center justify-center rounded-md bg-muted"
         title="Photo unavailable"
       >
         <ImageOff className="h-8 w-8 text-muted-foreground" />
       </div>
     );
-  return <img src={src} alt={alt} className="h-40 w-full rounded-md object-cover shadow-sm" />;
+  return <img src={src} alt={alt} className="h-24 sm:h-40 w-full rounded-md object-cover shadow-sm" />;
 }
 
 function ProgressRing({ radius, stroke, progress }: { radius: number; stroke: number; progress: number }) {
@@ -112,7 +112,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
 
   return (
     <Dialog open={!!match} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto gap-4 p-4 sm:p-6 sm:gap-6">
+      <DialogContent className="w-[92vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto gap-4 p-4 sm:p-6 sm:gap-6 rounded-lg">
         {match && (
           <>
             <DialogHeader className="flex flex-row items-start justify-between gap-2 sm:items-center">
@@ -142,7 +142,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
               </div>
             </DialogHeader>
 
-            <div className="grid gap-4 sm:gap-6 sm:grid-cols-2">
+            <div className="grid gap-3 sm:gap-6 grid-cols-2">
               <div className="space-y-1.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original Alert Photo</p>
                 <PhotoOrFallback src={alert?.imageUrl ?? ""} alt={`${match.childName} — original`} />
@@ -227,7 +227,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
                   <ConfirmDialog
                     destructive
                     trigger={
-                      <Button variant="outline" className="w-full border-destructive/30 text-destructive hover:bg-destructive/10" disabled={reviewed}>
+                      <Button variant="outline" className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive" disabled={reviewed}>
                         Decline
                       </Button>
                     }

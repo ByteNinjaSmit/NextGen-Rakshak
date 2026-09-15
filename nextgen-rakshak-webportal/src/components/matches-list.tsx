@@ -80,7 +80,11 @@ export function MatchesList() {
           </TableHeader>
           <TableBody>
             {matches.map((match) => (
-              <TableRow key={match.id}>
+              <TableRow 
+                key={match.id} 
+                className="cursor-pointer" 
+                onClick={() => setSelectedMatch(match)}
+              >
                 <TableCell>
                   <div className="flex items-center gap-3">
                     {match.imageUrl ? (
@@ -125,7 +129,7 @@ export function MatchesList() {
                   <Badge variant={statusVariant[match.status]}>{match.status}</Badge>
                 </TableCell>
                 <TableCell className="text-right">
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-1" onClick={(e) => e.stopPropagation()}>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => setSelectedMatch(match)}>
                         Review

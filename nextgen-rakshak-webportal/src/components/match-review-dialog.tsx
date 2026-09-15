@@ -148,6 +148,19 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
               )}
             </div>
 
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Location</p>
+              <iframe
+                title="Match Location"
+                width="100%"
+                height="200"
+                style={{ border: 0, borderRadius: "0.375rem" }}
+                loading="lazy"
+                allowFullScreen
+                src={`https://maps.google.com/maps?q=${match.location.latitude},${match.location.longitude}&z=15&output=embed`}
+              ></iframe>
+            </div>
+
             {error && <p className="text-sm text-destructive">{error}</p>}
 
             <DialogFooter>

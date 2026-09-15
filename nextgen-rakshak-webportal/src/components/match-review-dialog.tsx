@@ -63,7 +63,7 @@ function ProgressRing({ radius, stroke, progress }: { radius: number; stroke: nu
         />
       </svg>
       <div className="absolute flex flex-col items-center justify-center">
-        <span className="text-[13px] font-bold leading-none">{progress}%</span>
+        <span className="text-[13px] font-bold leading-none">{progress}</span>
       </div>
     </div>
   );
@@ -112,16 +112,16 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
 
   return (
     <Dialog open={!!match} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl gap-6">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto gap-4 p-4 sm:p-6 sm:gap-6">
         {match && (
           <>
-            <DialogHeader className="flex flex-row items-start justify-between sm:items-center">
+            <DialogHeader className="flex flex-row items-start justify-between gap-2 sm:items-center">
               <div className="flex flex-col space-y-2 text-left">
-                <DialogTitle className="text-2xl font-bold">Review match for {match.childName}</DialogTitle>
+                <DialogTitle className="text-xl sm:text-2xl font-bold">Review match for {match.childName}</DialogTitle>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1 text-xs text-muted-foreground w-fit">
-                    <span className="font-medium text-foreground">{match.volunteerName || "Unknown"}</span> 
-                    <span>reported at {match.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span className="font-medium text-foreground">{match.volunteerName || "Unknown"}</span>
+                    <span>reported at {match.timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   {match.relayedBy && (
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] uppercase tracking-wider text-slate-500 font-medium">
@@ -130,7 +130,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
                   )}
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">
                   {timeAgo(match.timestamp)}
@@ -142,7 +142,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
               </div>
             </DialogHeader>
 
-            <div className="grid gap-6 sm:grid-cols-2">
+            <div className="grid gap-4 sm:gap-6 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Original Alert Photo</p>
                 <PhotoOrFallback src={alert?.imageUrl ?? ""} alt={`${match.childName} — original`} />
@@ -153,8 +153,8 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
               </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4">
-              {loadingAlert && <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin"/> Loading alert details…</p>}
+            <div className="rounded-lg border bg-card p-3 sm:p-4">
+              {loadingAlert && <p className="text-sm text-muted-foreground flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading alert details…</p>}
               {!loadingAlert && !alert && (
                 <p className="text-sm text-muted-foreground">Original alert details unavailable.</p>
               )}
@@ -202,8 +202,8 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
 
             {error && <p className="text-sm text-destructive">{error}</p>}
 
-            <div className="flex flex-col sm:flex-row gap-6 items-center rounded-xl bg-muted/30 border p-4">
-              <div className="shrink-0 relative overflow-hidden rounded-full shadow-inner border bg-muted" style={{ width: 140, height: 140 }}>
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-center rounded-xl bg-muted/30 border p-3 sm:p-4">
+              <div className="shrink-0 relative overflow-hidden rounded-full shadow-inner border bg-muted w-24 h-24 sm:w-[140px] sm:h-[140px]">
                 <iframe
                   title="Match Location"
                   width="100%"
@@ -214,7 +214,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
                   src={`https://maps.google.com/maps?q=${match.location.latitude},${match.location.longitude}&z=15&output=embed`}
                 ></iframe>
               </div>
-              
+
               <div className="flex flex-1 flex-col justify-center gap-3 w-full">
                 <Button asChild variant="secondary" className="w-full justify-start">
                   <a href={`https://www.google.com/maps?q=${match.location.latitude},${match.location.longitude}`} target="_blank" rel="noopener noreferrer">
@@ -222,7 +222,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
                     Open in Google Maps
                   </a>
                 </Button>
-                
+
                 <div className="grid grid-cols-2 gap-3">
                   <ConfirmDialog
                     destructive
@@ -246,7 +246,7 @@ export function MatchReviewDialog({ match, onOpenChange }: MatchReviewDialogProp
                 </div>
               </div>
             </div>
-            
+
           </>
         )}
       </DialogContent>
